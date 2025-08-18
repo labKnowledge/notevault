@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoteVault Extension</title>
+    <link rel="stylesheet" href="css/popup.css">
+    <link rel="stylesheet" href="lib/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <i class="fas fa-cube"></i>
+                <span>NoteVault</span>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="quick-actions">
+                <button id="open-full-app" class="primary-btn">
+                    <i class="fas fa-external-link-alt"></i>
+                    Open Full App
+                </button>
+                <button id="new-note" class="secondary-btn">
+                    <i class="fas fa-plus"></i>
+                    New Note
+                </button>
+            </div>
+            
+            <div class="recent-notes">
+                <h3>Recent Notes</h3>
+                <div id="notes-container">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading notes...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <button id="settings-btn" class="icon-btn">
+                <i class="fas fa-cog"></i>
+            </button>
+        </div>
+    </div>
+
+    <script src="js/popup.js"></script>
+</body>
+</html>

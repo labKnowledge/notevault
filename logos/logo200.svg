@@ -1,0 +1,45 @@
+
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#f5f7fa" stroke="#5c6bc0" stroke-width="2"/>
+  
+  <!-- 3D Cube representation -->
+  <g transform="translate(100, 100)">
+    <!-- Back face -->
+    <path d="M -40,-40 L 40,-40 L 40,40 L -40,40 Z" fill="#3949ab" opacity="0.7"/>
+    
+    <!-- Right face -->
+    <path d="M 40,-40 L 55,-25 L 55,55 L 40,40 Z" fill="#5c6bc0"/>
+    
+    <!-- Top face -->
+    <path d="M -40,-40 L -25,-55 L 55,-55 L 40,-40 Z" fill="#7986cb"/>
+    
+    <!-- Document icons inside the cube -->
+    <!-- Document 1 -->
+    <g transform="translate(-15, -15) rotate(-15)">
+      <rect x="-10" y="-15" width="20" height="25" rx="2" fill="white" opacity="0.9"/>
+      <line x1="-6" y1="-8" x2="6" y2="-8" stroke="#5c6bc0" stroke-width="1.5"/>
+      <line x1="-6" y1="-3" x2="6" y2="-3" stroke="#5c6bc0" stroke-width="1.5"/>
+      <line x1="-6" y1="2" x2="6" y2="2" stroke="#5c6bc0" stroke-width="1.5"/>
+    </g>
+    
+    <!-- Document 2 -->
+    <g transform="translate(15, 0) rotate(10)">
+      <rect x="-10" y="-15" width="20" height="25" rx="2" fill="white" opacity="0.9"/>
+      <line x1="-6" y1="-8" x2="6" y2="-8" stroke="#5c6bc0" stroke-width="1.5"/>
+      <line x1="-6" y1="-3" x2="6" y2="-3" stroke="#5c6bc0" stroke-width="1.5"/>
+      <line x1="-6" y1="2" x2="6" y2="2" stroke="#5c6bc0" stroke-width="1.5"/>
+    </g>
+    
+    <!-- Document 3 -->
+    <g transform="translate(0, 15) rotate(5)">
+      <rect x="-10" y="-15" width="20" height="25" rx="2" fill="white" opacity="0.9"/>
+      <line x1="-6" y1="-8" x2="6" y2="-8" stroke="#5c6bc0" stroke-width="1.5"/>
+      <line x1="-6" y1="-3" x2="6" y2="-3" stroke="#5c6bc0" stroke-width="1.5"/>
+      <line x1="-6" y1="2" x2="6" y2="2" stroke="#5c6bc0" stroke-width="1.5"/>
+    </g>
+  </g>
+  
+  <!-- Text -->
+  <text x="100" y="170" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#3949ab">NoteVault</text>
+</svg>

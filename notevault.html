@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoteVault - 3D Note Taking Experience</title>
+    
+    <!-- External Libraries -->
+    <script src="lib/three.min.js"></script>
+    <script src="lib/OrbitControls.js"></script>
+    <script src="lib/gsap.min.js"></script>
+    <link rel="stylesheet" href="lib/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/ai-styles.css">
+
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">
+                <i class="fas fa-cube"></i>
+                <span>NoteVault</span>
+            </div>
+            <div class="header-actions">
+                <div class="view-toggle">
+                   
+                    <button class="view-btn" data-view="2d">
+                        <i class="fas fa-th-large"></i>
+                    </button>
+
+                    <button class="view-btn active" data-view="3d">
+                        <i class="fas fa-cube"></i>
+                    </button>
+                </div>
+                <button class="btn" id="new-note-btn">
+                    <i class="fas fa-plus"></i>
+                    <span>New Note</span>
+                </button>
+                <button class="ai-button" id="ai-suggestions-btn" title="AI Suggestions">
+                    <i class="fas fa-robot"></i>
+                    <span>AI</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar" id="sidebar">
+                <button class="sidebar-toggle" id="sidebar-toggle">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-title">
+                        <span>Notebooks</span>
+                        <button class="add-btn" id="add-notebook-btn">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                    <ul class="notebook-list" id="notebook-list">
+                        <li class="notebook-item active" data-id="all">
+                            <i class="fas fa-folder"></i>
+                            <span>All Notes</span>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-title">
+                        <span>Tags</span>
+                        <button class="add-btn" id="add-tag-btn">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                    <ul class="tag-list" id="tag-list">
+                        <!-- Tags will be dynamically added here -->
+                    </ul>
+                </div>
+            </aside>
+
+            <!-- Notes Area -->
+            <div class="notes-area">
+                <!-- Search Bar -->
+                <div class="search-bar">
+                    <div class="search-input-container">
+                        <i class="fas fa-search"></i>
+                        <input type="text" class="search-input" id="search-input" placeholder="Search notes...">
+                    </div>
+                    <div class="filter-dropdown">
+                        <button class="filter-btn" id="filter-btn">
+                            <span>Filter</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="filter-menu" id="filter-menu">
+                            <div class="filter-option" data-filter="recent">Most Recent</div>
+                            <div class="filter-option" data-filter="oldest">Oldest First</div>
+                            <div class="filter-option" data-filter="title">By Title</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2D Notes View -->
+                <div class="notes-view" id="notes-view">
+                    <!-- Notes will be dynamically added here -->
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <i class="fas fa-sticky-note"></i>
+                        </div>
+                        <h2 class="empty-state-title">No Notes Yet</h2>
+                        <p class="empty-state-text">Create your first note to get started with NoteVault</p>
+                        <button class="btn" id="empty-state-new-note">
+                            <i class="fas fa-plus"></i>
+                            <span>Create Note</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3D View -->
+                <div class="three-view" id="three-view">
+                    <canvas id="three-canvas"></canvas>
+                    <div class="three-info">
+                        <h3>3D Note Space</h3>
+                        <p>Click and drag to rotate • Scroll to zoom • Click on notes to open</p>
+                    </div>
+                    <div class="three-controls">
+                        <button class="three-control-btn" id="reset-camera" title="Reset Camera">
+                            <i class="fas fa-home"></i>
+                        </button>
+                        <button class="three-control-btn" id="arrange-grid" title="Grid View">
+                            <i class="fas fa-th"></i>
+                        </button>
+                        <button class="three-control-btn" id="arrange-sphere" title="Sphere View">
+                            <i class="fas fa-globe"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Note Editor Modal -->
+        <div class="note-editor-modal" id="note-editor-modal">
+            <div class="note-editor">
+                <div class="note-editor-header">
+                    <h2 class="note-editor-title" id="editor-title">New Note</h2>
+                    <button class="note-editor-close" id="editor-close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="note-editor-body">
+                    <div class="editor-field">
+                        <label class="editor-label" for="note-title-input">Title</label>
+                        <input type="text" class="editor-input" id="note-title-input" placeholder="Note title">
+                    </div>
+                    
+                    <div class="editor-field">
+                        <label class="editor-label" for="note-content-input">Content</label>
+                        <div class="editor-toolbar">
+                            <button data-command="bold" title="Bold"><i class="fas fa-bold"></i></button>
+                            <button data-command="italic" title="Italic"><i class="fas fa-italic"></i></button>
+                            <button data-command="underline" title="Underline"><i class="fas fa-underline"></i></button>
+                            <div class="toolbar-separator"></div>
+                            <div class="ai-toolbar-group">
+                                <button class="ai-button" id="ai-enhance-btn" title="Improve writing quality and clarity">
+                                    <i class="fas fa-magic"></i>
+                                    <span>Enhance</span>
+                                </button>
+                                <button class="ai-button" id="ai-explain-btn" title="Explain complex concepts simply">
+                                    <i class="fas fa-lightbulb"></i>
+                                    <span>Explain</span>
+                                </button>
+                                <button class="ai-button" id="ai-expand-btn" title="Add more details and context">
+                                    <i class="fas fa-expand-arrows-alt"></i>
+                                    <span>Expand</span>
+                                </button>
+                                <button class="ai-button dropdown-trigger" id="ai-more-btn" title="More AI Tools">
+                                    <i class="fas fa-robot"></i>
+                                    <span>More</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
+                                <div class="ai-dropdown" id="ai-dropdown">
+                                    <button class="ai-dropdown-item" id="ai-brainstorm-btn">
+                                        <i class="fas fa-brain"></i>
+                                        <span>Brainstorm Ideas</span>
+                                    </button>
+                                    <button class="ai-dropdown-item" id="ai-write-btn">
+                                        <i class="fas fa-pen"></i>
+                                        <span>Continue Writing</span>
+                                    </button>
+                                    <button class="ai-dropdown-item" id="ai-humanize-btn">
+                                        <i class="fas fa-user-friends"></i>
+                                        <span>Humanize</span>
+                                    </button>
+                                    <button class="ai-dropdown-item" id="ai-repurpose-btn">
+                                        <i class="fas fa-recycle"></i>
+                                        <span>Repurpose</span>
+                                    </button>
+                                    <button class="ai-dropdown-item" id="ai-analyze-btn">
+                                        <i class="fas fa-chart-line"></i>
+                                        <span>Full Analysis</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <button data-command="insertUnorderedList" title="Bullet List"><i class="fas fa-list-ul"></i></button>
+                            <button data-command="insertOrderedList" title="Numbered List"><i class="fas fa-list-ol"></i></button>
+                            <button data-command="justifyLeft" title="Align Left"><i class="fas fa-align-left"></i></button>
+                            <button data-command="justifyCenter" title="Align Center"><i class="fas fa-align-center"></i></button>
+                            <button data-command="justifyRight" title="Align Right"><i class="fas fa-align-right"></i></button>
+                        </div>
+                        <div class="editor-content" id="note-content-input" contenteditable="true"></div>
+                    </div>
+                    
+                    <div class="editor-field">
+                        <label class="editor-label">Notebook</label>
+                        <select class="notebook-selector" id="note-notebook-select">
+                            <option value="">Select a notebook</option>
+                        </select>
+                    </div>
+                    
+                    <div class="editor-field">
+                        <label class="editor-label">Tags</label>
+                        <div class="editor-tags" id="editor-selected-tags">
+                            <!-- Selected tags will appear here -->
+                        </div>
+                        <div class="tag-selector" id="tag-selector">
+                            <!-- Available tags will appear here -->
+                        </div>
+                    </div>
+                </div>
+                <div class="note-editor-footer">
+                    <div class="save-status" id="save-status">
+                        <i class="fas fa-save"></i>
+                        <span>Saved</span>
+                    </div>
+                    <div>
+                        <button class="btn btn-secondary" id="save-note-btn">Save Note</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div class="toast" id="toast">
+            <div class="toast-icon">
+                <i class="fas fa-info-circle"></i>
+            </div>
+            <div class="toast-message"></div>
+        </div>
+    </div>
+
+    <!-- AI Control Panel -->
+    <div class="ai-control-panel" id="ai-control-panel" style="display: none;">
+        <div class="ai-control-header">
+            <i class="fas fa-robot"></i>
+            <h3>AI Assistant</h3>
+        </div>
+        <div class="ai-feature-toggle">
+            <span class="ai-feature-label">Smart Tagging</span>
+            <label class="ai-toggle-switch">
+                <input type="checkbox" id="ai-smart-tagging" checked>
+                <span class="ai-toggle-slider"></span>
+            </label>
+        </div>
+        <div class="ai-feature-toggle">
+            <span class="ai-feature-label">Auto Enhancement</span>
+            <label class="ai-toggle-switch">
+                <input type="checkbox" id="ai-auto-enhance">
+                <span class="ai-toggle-slider"></span>
+            </label>
+        </div>
+        <div class="ai-feature-toggle">
+            <span class="ai-feature-label">Autonomous Mode</span>
+            <label class="ai-toggle-switch">
+                <input type="checkbox" id="ai-autonomous-mode" checked>
+                <span class="ai-toggle-slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <!-- AI Scripts -->
+    <script src="js/ai-config.js"></script>
+    <script src="js/ai-agent.js"></script>
+    <script src="js/ai-features.js"></script>
+    <script src="js/ai-service.js"></script>
+    <script src="js/ai-actions.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

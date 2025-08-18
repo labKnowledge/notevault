@@ -1,0 +1,61 @@
+{
+  "manifest_version": 3,
+  "name": "NoteVault - 3D Note Taking",
+  "version": "1.0",
+  "description": "Access your NoteVault 3D notes directly from your browser toolbar",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "commands",
+    "contextMenus",
+    "notifications",
+    "scripting",
+    "host_permissions"
+  ],
+  "host_permissions": [
+    "https://dashscope-intl.aliyuncs.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["js/content.js"],
+      "css": ["css/content.css"]
+    }
+  ],
+  "background": {
+    "service_worker": "js/background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "commands": {
+    "open-notevault": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+N",
+        "mac": "Command+Shift+N"
+      },
+      "description": "Open NoteVault"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://dashscope-intl.aliyuncs.com"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/*.js", "js/*.js", "css/*.css", "js/ai-agent.js", "js/ai-service.js", "css/ai-styles.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

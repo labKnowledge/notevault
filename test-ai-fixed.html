@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoteVault AI Test</title>
+    <link rel="stylesheet" href="css/test-ai.css">
+</head>
+<body>
+    <h1>NoteVault AI Integration Test</h1>
+    
+    <div class="test-panel">
+        <h2>AI Configuration Status</h2>
+        <div id="config-status" class="ai-status">Loading...</div>
+        <button class="test-button" id="test-config-btn">Test Configuration</button>
+    </div>
+    
+    <div class="test-panel">
+        <h2>AI Agent Tests</h2>
+        <div id="agent-status" class="ai-status">Not tested</div>
+        <button class="test-button" id="test-agent-btn">Test AI Agent</button>
+        <button class="test-button" id="test-title-btn">Test Title Generation</button>
+        <button class="test-button" id="test-tag-btn">Test Tag Generation</button>
+        <button class="test-button" id="test-analysis-btn">Test Note Analysis</button>
+    </div>
+    
+    <div class="test-panel">
+        <h2>Test Results</h2>
+        <div id="test-results"></div>
+        <button class="test-button" id="clear-results-btn">Clear Results</button>
+    </div>
+    
+    <script src="js/ai-config.js"></script>
+    <script src="js/ai-agent.js"></script>
+    <script src="js/test-ai.js"></script>
+    <script src="js/test-ai-events.js"></script>
+</body>
+</html>

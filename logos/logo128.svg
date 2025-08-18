@@ -1,0 +1,34 @@
+
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- 3D Cube representation -->
+  <g transform="translate(64, 54)">
+    <!-- Back face -->
+    <path d="M -30,-30 L 30,-30 L 30,30 L -30,30 Z" fill="#3949ab" opacity="0.7"/>
+    
+    <!-- Right face -->
+    <path d="M 30,-30 L 42,-18 L 42,42 L 30,30 Z" fill="#5c6bc0"/>
+    
+    <!-- Top face -->
+    <path d="M -30,-30 L -18,-42 L 42,-42 L 30,-30 Z" fill="#7986cb"/>
+    
+    <!-- Document icons inside the cube -->
+    <!-- Document 1 -->
+    <g transform="translate(-10, -10) rotate(-15)">
+      <rect x="-8" y="-12" width="16" height="20" rx="2" fill="white" opacity="0.9"/>
+      <line x1="-5" y1="-6" x2="5" y2="-6" stroke="#5c6bc0" stroke-width="1.2"/>
+      <line x1="-5" y1="-2" x2="5" y2="-2" stroke="#5c6bc0" stroke-width="1.2"/>
+      <line x1="-5" y1="2" x2="5" y2="2" stroke="#5c6bc0" stroke-width="1.2"/>
+    </g>
+    
+    <!-- Document 2 -->
+    <g transform="translate(10, 0) rotate(10)">
+      <rect x="-8" y="-12" width="16" height="20" rx="2" fill="white" opacity="0.9"/>
+      <line x1="-5" y1="-6" x2="5" y2="-6" stroke="#5c6bc0" stroke-width="1.2"/>
+      <line x1="-5" y1="-2" x2="5" y2="-2" stroke="#5c6bc0" stroke-width="1.2"/>
+      <line x1="-5" y1="2" x2="5" y2="2" stroke="#5c6bc0" stroke-width="1.2"/>
+    </g>
+  </g>
+  
+  <!-- Text -->
+  <text x="64" y="105" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#3949ab">NoteVault</text>
+</svg>
