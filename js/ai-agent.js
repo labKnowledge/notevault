@@ -240,6 +240,7 @@ Respond in JSON format: {
 3. Adding relevant context or examples
 4. Suggesting follow-up questions or areas to explore
 5. Maintaining the original meaning and voice
+6. Use plain text and add text breaking 
 
 Respond in JSON format: {
   "enhanced_content": string,

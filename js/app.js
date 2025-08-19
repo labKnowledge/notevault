@@ -2397,6 +2397,15 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        if (!app.aiService.ai || !app.aiService.ai.isAvailable()) {
+            showToast('AI agent not configured. Please configure your API key in settings.', 'error');
+            return;
+        }
+        
+        // Find the button that triggered this action and add loading state
+        const buttonId = `ai-${actionType}-btn`;
+        const button = document.getElementById(buttonId);
+        
         try {
             // Get content - selected text or full content
             let content = app.aiService.getSelectedText();
@@ -2409,42 +2418,86 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            showToast(`Processing with AI ${actionType}...`, 'info');
+            // Add loading state to button
+            if (button) {
+                button.classList.add('loading');
+                button.disabled = true;
+            }
+            
+            // Show loading indicator modal
+            console.log('⏳ About to show loading indicator for:', actionType);
+            if (app.aiService.showProcessingIndicator) {
+                console.log('✅ showProcessingIndicator method exists, calling it');
+                app.aiService.showProcessingIndicator(actionType);
+            } else {
+                console.warn('⚠️ showProcessingIndicator method not found on aiService');
+            }
             
             let result;
-            switch (actionType) {
-                case 'explain':
-                    result = await app.aiService.explainContent(content);
-                    break;
-                case 'expand':
-                    result = await app.aiService.expandContent(content);
-                    break;
-                case 'brainstorm':
-                    result = await app.aiService.brainstormIdeas(content);
-                    break;
-                case 'write':
-                    result = await app.aiService.continueWriting(content);
-                    break;
-                case 'humanize':
-                    result = await app.aiService.humanizeContent(content);
-                    break;
-                case 'repurpose':
-                    result = await app.aiService.repurposeContent(content);
-                    break;
-                default:
-                    throw new Error(`Unknown action type: ${actionType}`);
+            console.log('🤖 Starting AI processing for:', actionType);
+            
+            try {
+                switch (actionType) {
+                    case 'explain':
+                        console.log('💡 Calling explainContent...');
+                        result = await app.aiService.ai.explainContent(content);
+                        break;
+                    case 'expand':
+                        console.log('📝 Calling expandContent...');
+                        result = await app.aiService.ai.expandContent(content);
+                        break;
+                    case 'brainstorm':
+                        console.log('🧠 Calling brainstormIdeas...');
+                        result = await app.aiService.ai.brainstormIdeas(content);
+                        break;
+                    case 'write':
+                        console.log('✍️ Calling continueWriting...');
+                        result = await app.aiService.ai.continueWriting(content);
+                        break;
+                    case 'humanize':
+                        console.log('😄 Calling humanizeContent...');
+                        result = await app.aiService.ai.humanizeContent(content);
+                        break;
+                    case 'repurpose':
+                        console.log('♾️ Calling repurposeContent...');
+                        result = await app.aiService.ai.repurposeContent(content);
+                        break;
+                    default:
+                        throw new Error(`Unknown action type: ${actionType}`);
+                }
+                console.log('✅ AI processing completed, result:', result ? 'success' : 'no result');
+            } catch (aiError) {
+                console.error('❌ AI processing failed:', aiError);
+                throw aiError; // Re-throw to be caught by outer try-catch
             }
             
             if (result) {
+                console.log('📦 Got result, showing action result modal');
                 app.aiService.showActionResult(actionType, result, content);
                 showToast(`${actionType} complete!`, 'success');
             } else {
+                console.log('⚠️ No result from AI action');
+                // Hide loading indicator if no result
+                if (app.aiService.hideProcessingIndicator) {
+                    app.aiService.hideProcessingIndicator();
+                }
                 showToast(`No ${actionType} results available`, 'info');
             }
             
         } catch (error) {
-            console.error(`AI ${actionType} failed:`, error);
+            console.error(`❌ AI ${actionType} failed:`, error);
+            // Hide loading indicator on error
+            if (app.aiService && app.aiService.hideProcessingIndicator) {
+                console.log('❌ Hiding loading indicator due to error');
+                app.aiService.hideProcessingIndicator();
+            }
             showToast(`${actionType} failed: ${error.message}`, 'error');
+        } finally {
+            // Always remove loading state from button
+            if (button) {
+                button.classList.remove('loading');
+                button.disabled = false;
+            }
         }
     }
     

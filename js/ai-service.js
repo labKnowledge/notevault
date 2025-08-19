@@ -104,10 +104,12 @@ class NoteVaultAIService {
 
             // Enhance content if requested
             if (enableContentEnhancement && this.ai.isAvailable()) {
+                console.log("Enhancing the text")
                 const enhancement = await this.ai.enhanceContent(note);
                 if (enhancement) {
                     note.aiContentEnhancement = enhancement;
                     if (showSuggestions) {
+                        console.log("done enhancement")
                         this.showContentEnhancement(note, enhancement);
                     }
                 }
@@ -397,38 +399,90 @@ class NoteVaultAIService {
 
     // Show suggestion panel
     showSuggestionPanel(panel) {
+        console.log('📦 showSuggestionPanel called with panel:', panel.className);
+        
         // Remove any existing panel
-        this.closeSuggestionPanel();
+        // console.log('📦 Closing existing panels first');
+        // this.closeSuggestionPanel();
+        
+        // Create backdrop if it doesn't exist
+        let backdrop = document.getElementById('ai-modal-backdrop');
+        if (!backdrop) {
+            backdrop = document.createElement('div');
+            backdrop.id = 'ai-modal-backdrop';
+            backdrop.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 9999;
+                backdrop-filter: blur(3px);
+            `;
+            document.body.appendChild(backdrop);
+            
+            // Add backdrop click handler
+            // backdrop.addEventListener('click', (e) => {
+            //     if (e.target === backdrop) {
+            //         console.log('📦 Backdrop clicked, closing modal');
+            //         this.closeSuggestionPanel();
+            //     }
+            // });
+        }
+        
+        // Set higher z-index for panel
+        panel.style.zIndex = '10000';
         
         // Add to DOM
+        console.log('📦 Appending panel to document.body');
         document.body.appendChild(panel);
+        console.log('📦 Panel appended, panel ID:', panel.id);
         
         // Animate in
-        if (typeof gsap !== 'undefined') {
-            gsap.from(panel, {
-                scale: 0.8,
-                opacity: 0,
-                duration: 0.3,
-                ease: "back.out(1.7)"
-            });
-        }
+        // if (typeof gsap !== 'undefined') {
+        //     console.log('📦 Animating panel in with GSAP');
+        //     gsap.from(panel, {
+        //         scale: 0.8,
+        //         opacity: 0,
+        //         duration: 0.3,
+        //         ease: "back.out(1.7)"
+        //     });
+        // } else {
+        //     console.log('⚠️ GSAP not available for animation');
+        // }
     }
 
     // Close suggestion panel
     closeSuggestionPanel() {
+        console.log('❌ closeSuggestionPanel called');
         const existingPanel = document.querySelector('.ai-suggestion-panel');
+        const backdrop = document.getElementById('ai-modal-backdrop');
+        
         if (existingPanel) {
+            console.log('❌ Found existing panel to close:', existingPanel.id || existingPanel.className);
             if (typeof gsap !== 'undefined') {
+                console.log('❌ Animating panel out with GSAP');
                 gsap.to(existingPanel, {
                     scale: 0.8,
                     opacity: 0,
                     duration: 0.2,
                     ease: "power2.in",
-                    onComplete: () => existingPanel.remove()
+                    onComplete: () => {
+                        existingPanel.remove();
+                        if (backdrop) {
+                            backdrop.remove();
+                        }
+                    }
                 });
             } else {
                 existingPanel.remove();
+                if (backdrop) {
+                    backdrop.remove();
+                }
             }
+        } else if (backdrop) {
+            backdrop.remove();
         }
     }
 
@@ -1050,3 +1104,19 @@ class NoteVaultAIService {
 
 // Export for use in other modules
 window.NoteVaultAIService = NoteVaultAIService;
+
+// Add fallback methods for loading indicators (in case ai-actions.js doesn't load properly)
+if (!NoteVaultAIService.prototype.showProcessingIndicator) {
+    NoteVaultAIService.prototype.showProcessingIndicator = function(actionType, message = 'AI is processing...') {
+        console.log(`Processing: ${actionType}`);
+        // Fallback: just show a simple toast if available
+        if (window.NoteVaultApp && window.NoteVaultApp.showToast) {
+            window.NoteVaultApp.showToast(`Processing with AI ${actionType}...`, 'info');
+        }
+    };
+    
+    NoteVaultAIService.prototype.hideProcessingIndicator = function() {
+        console.log('Processing complete');
+        // No-op fallback
+    };
+}

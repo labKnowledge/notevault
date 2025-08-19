@@ -94,9 +94,115 @@ document.addEventListener('DOMContentLoaded', function() {
         window.close();
     }
 
-    // Settings button (placeholder for future functionality)
+    // Settings modal elements
+    const settingsModal = document.getElementById('settings-modal');
+    const closeSettingsBtn = document.getElementById('close-settings');
+    const saveSettingsBtn = document.getElementById('save-settings');
+    const testApiBtn = document.getElementById('test-api');
+    const apiKeyInput = document.getElementById('api-key-input');
+    const modelSelect = document.getElementById('model-select');
+    const aiStatusText = document.getElementById('ai-status-text');
+
+    // Settings button - open modal
     settingsBtn.addEventListener('click', function() {
-        alert('Settings feature coming soon!');
+        loadSettings();
+        settingsModal.style.display = 'block';
+    });
+
+    // Close settings modal
+    closeSettingsBtn.addEventListener('click', function() {
+        settingsModal.style.display = 'none';
+    });
+
+    // Close modal when clicking outside
+    settingsModal.addEventListener('click', function(e) {
+        if (e.target === settingsModal) {
+            settingsModal.style.display = 'none';
+        }
+    });
+
+    // Load current settings
+    async function loadSettings() {
+        if (window.aiConfig) {
+            const config = window.aiConfig.getConfig();
+            const status = window.aiConfig.getStatus();
+            
+            apiKeyInput.value = config.apiKey || '';
+            modelSelect.value = config.model || 'qwen-plus';
+            
+            aiStatusText.textContent = status.configured ? 
+                `AI Status: Connected (${status.model})` : 
+                'AI Status: Not configured';
+        }
+    }
+
+    // Save settings
+    saveSettingsBtn.addEventListener('click', async function() {
+        const apiKey = apiKeyInput.value.trim();
+        const model = modelSelect.value;
+        
+        if (!apiKey) {
+            alert('Please enter an API key');
+            return;
+        }
+        
+        if (window.aiConfig) {
+            await window.aiConfig.updateConfig({
+                apiKey: apiKey,
+                model: model
+            });
+            
+            const status = window.aiConfig.getStatus();
+            aiStatusText.textContent = status.configured ? 
+                `AI Status: Connected (${status.model})` : 
+                'AI Status: Configuration error';
+            
+            alert('Settings saved successfully!');
+        }
+    });
+
+    // Test API connection
+    testApiBtn.addEventListener('click', async function() {
+        const apiKey = apiKeyInput.value.trim();
+        const model = modelSelect.value;
+        
+        if (!apiKey) {
+            alert('Please enter an API key first');
+            return;
+        }
+        
+        testApiBtn.disabled = true;
+        testApiBtn.textContent = 'Testing...';
+        
+        try {
+            // Simple test request to verify API key works
+            const response = await fetch('https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [{ role: 'user', content: 'test' }],
+                    max_tokens: 1
+                })
+            });
+            
+            if (response.ok || response.status === 429) { // 429 = rate limit, but API key is valid
+                alert('API connection test successful!');
+                aiStatusText.textContent = `AI Status: Connected (${model})`;
+            } else {
+                alert('API connection test failed. Please check your API key.');
+                aiStatusText.textContent = 'AI Status: Connection failed';
+            }
+        } catch (error) {
+            alert('API connection test failed: ' + error.message);
+            aiStatusText.textContent = 'AI Status: Connection failed';
+        } finally {
+            testApiBtn.disabled = false;
+            testApiBtn.textContent = 'Test Connection';
+        }
     });
 
     // Load notes when popup opens

@@ -2,7 +2,7 @@
 class AIConfig {
     constructor() {
         this.config = {
-            apiKey: 'tyuiopoiuyttyuio',
+            apiKey: '',
             baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
             model: 'qwen-plus'
         };
