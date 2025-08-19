@@ -5,6 +5,7 @@
     let buttonContainer = null;
     let selectedText = '';
     let selectionRange = null;
+    let selectionInfo = null; // Store additional selection info for form elements
     let isEditableField = false;
     let currentModal = null;
     
@@ -111,12 +112,25 @@
             selectionRange = selection.getRangeAt(0).cloneRange();
             isEditableField = checkIfEditableField(selection);
             
+            // Store additional info for form elements
+            const activeElement = document.activeElement;
+            if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT')) {
+                selectionInfo = {
+                    element: activeElement,
+                    selectionStart: activeElement.selectionStart,
+                    selectionEnd: activeElement.selectionEnd
+                };
+            } else {
+                selectionInfo = null;
+            }
+            
             if (!buttonContainer) createButtonContainer();
             positionButtons(selection);
         } else {
             hideButtons();
             selectedText = '';
             selectionRange = null;
+            selectionInfo = null;
             isEditableField = false;
         }
     }
@@ -175,7 +189,6 @@
     // Explain text function
     function handleExplain() {
         if (!selectedText) return;
-        console.log(`Selected text for explanation: "${selectedText}"`);
         
         // Check AI configuration first
         checkAIConfig((isConfigured, error) => {
@@ -206,7 +219,6 @@
             action: 'explainText',
             text: selectedText
         }, (response) => {
-            console.log('Explain response:', response);
             if (chrome.runtime.lastError) {
                 console.error('Chrome runtime error:', chrome.runtime.lastError);
                 closeModal();
@@ -215,12 +227,11 @@
             }
             
             if (response && response.success && response.result) {
-                // Show explanation in modal
+                // Show explanation in modal with markdown parsing
                 createModal('Explanation', response.result, 'info');
             } else {
                 closeModal();
                 const errorMsg = response?.error || 'Failed to generate explanation';
-                console.error('Explain failed:', errorMsg);
                 showToast(errorMsg, 'error');
             }
             window.getSelection().removeAllRanges();
@@ -230,7 +241,6 @@
     // Proofread text function
     function handleProofread() {
         if (!selectedText || !isEditableField) return;
-        console.log(`Selected text for proofreading: "${selectedText}"`);
 
         // Check AI configuration first
         checkAIConfig((isConfigured, error) => {
@@ -253,7 +263,6 @@
             action: 'proofreadText',
             text: selectedText
         }, (response) => {
-            console.log('Proofread response:', response);
             if (chrome.runtime.lastError) {
                 console.error('Chrome runtime error:', chrome.runtime.lastError);
                 closeModal();
@@ -262,12 +271,17 @@
             }
             
             if (response && response.success && response.result) {
+                // Preserve selection data for the modal actions
+                const preservedSelectionData = {
+                    selectedText: selectedText,
+                    selectionRange: selectionRange,
+                    selectionInfo: selectionInfo
+                };
                 // Show proofread text in modal with action buttons
-                createModal('Proofread Text', response.result, 'editable');
+                createModal('Proofread Text', response.result, 'editable', preservedSelectionData);
             } else {
                 closeModal();
                 const errorMsg = response?.error || 'Failed to proofread text';
-                console.error('Proofread failed:', errorMsg);
                 showToast(errorMsg, 'error');
             }
             window.getSelection().removeAllRanges();
@@ -277,8 +291,6 @@
     // Refine text function
     function handleRefine() {
         if (!selectedText || !isEditableField) return;
-        
-        console.log(`Selected text for refinement: "${selectedText}"`);
         
         // Check AI configuration first
         checkAIConfig((isConfigured, error) => {
@@ -310,12 +322,17 @@
             }
             
             if (response && response.success && response.result) {
+                // Preserve selection data for the modal actions
+                const preservedSelectionData = {
+                    selectedText: selectedText,
+                    selectionRange: selectionRange,
+                    selectionInfo: selectionInfo
+                };
                 // Show refined text in modal with action buttons
-                createModal('Refined Text', response.result, 'editable');
+                createModal('Refined Text', response.result, 'editable', preservedSelectionData);
             } else {
                 closeModal();
                 const errorMsg = response?.error || 'Failed to refine text';
-                console.error('Refine failed:', errorMsg);
                 showToast(errorMsg, 'error');
             }
             window.getSelection().removeAllRanges();
@@ -324,38 +341,234 @@
     
     // Replace selected text with new text
     function replaceSelectedText(newText) {
-        if (!selectionRange) return;
+        console.log('replaceSelectedText called with:', { newText, selectedText, selectionRange, selectionInfo });
+        if (!selectionRange || !selectedText) {
+            console.log('Early return: missing selectionRange or selectedText');
+            return;
+        }
         
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(selectionRange);
-        
-        if (selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0);
-            range.deleteContents();
-            range.insertNode(document.createTextNode(newText));
+        try {
+            const selection = window.getSelection();
             
-            // Clear selection
-            selection.removeAllRanges();
+            // Find the element that contains the selection
+            const container = selectionRange.commonAncestorContainer;
+            const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
+            
+            console.log('Selection details:', { container, element, tagName: element.tagName });
+            
+            // Try to find the correct editable element
+            let targetElement = element;
+            
+            // If we have stored selection info, use that element
+            if (selectionInfo && selectionInfo.element) {
+                targetElement = selectionInfo.element;
+                console.log('Using stored selection element:', targetElement);
+            }
+            
+            // Handle different types of editable elements
+            if (targetElement.tagName === 'TEXTAREA' || targetElement.tagName === 'INPUT') {
+                console.log('Processing textarea/input element');
+                // For textarea and input elements - use stored selection info if available
+                let startPos, endPos;
+                if (selectionInfo && selectionInfo.element === targetElement) {
+                    startPos = selectionInfo.selectionStart;
+                    endPos = selectionInfo.selectionEnd;
+                    console.log('Using stored positions:', { startPos, endPos });
+                } else {
+                    startPos = targetElement.selectionStart;
+                    endPos = targetElement.selectionEnd;
+                    console.log('Using current positions:', { startPos, endPos });
+                }
+                
+                const currentValue = targetElement.value;
+                console.log('Current value:', currentValue.substring(0, 50) + '...');
+                
+                // Replace the selected text
+                const newValue = currentValue.substring(0, startPos) + newText + currentValue.substring(endPos);
+                targetElement.value = newValue;
+                
+                // Set cursor position after the new text
+                targetElement.selectionStart = targetElement.selectionEnd = startPos + newText.length;
+                targetElement.focus();
+                
+                console.log('Text replacement completed for form element');
+                
+            } else if (element.isContentEditable || element.contentEditable === 'true') {
+                // For contentEditable elements
+                selection.removeAllRanges();
+                selection.addRange(selectionRange);
+                
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    
+                    // Create a text node or HTML content based on the newText
+                    if (newText.includes('\n')) {
+                        // Replace newlines with <br> for contentEditable
+                        const htmlContent = newText.replace(/\n/g, '<br>');
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = htmlContent;
+                        
+                        // Insert all child nodes
+                        while (tempDiv.firstChild) {
+                            range.insertNode(tempDiv.firstChild);
+                        }
+                    } else {
+                        range.insertNode(document.createTextNode(newText));
+                    }
+                    
+                    // Position cursor after inserted text
+                    range.collapse(false);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+            } else {
+                // Fallback for other elements (read-only)
+                showToast('Cannot replace text in this element', 'error');
+                return;
+            }
+            
+            console.log('Text replaced successfully');
+            
+        } catch (error) {
+            console.error('Error replacing text:', error);
+            showToast('Error replacing text', 'error');
         }
     }
     
     // Append text after selected text
     function appendToSelectedText(newText) {
-        if (!selectionRange) return;
-        
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(selectionRange);
-        
-        if (selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0);
-            range.collapse(false); // Move to end of selection
-            range.insertNode(document.createTextNode(' ' + newText));
-            
-            // Clear selection
-            selection.removeAllRanges();
+        console.log('appendToSelectedText called with:', { newText, selectedText, selectionRange, selectionInfo });
+        if (!selectionRange || !selectedText) {
+            console.log('Early return: missing selectionRange or selectedText');
+            return;
         }
+        
+        try {
+            const selection = window.getSelection();
+            
+            // Find the element that contains the selection
+            const container = selectionRange.commonAncestorContainer;
+            const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
+            
+            console.log('Append selection details:', { container, element, tagName: element.tagName });
+            
+            // Try to find the correct editable element
+            let targetElement = element;
+            
+            // If we have stored selection info, use that element
+            if (selectionInfo && selectionInfo.element) {
+                targetElement = selectionInfo.element;
+                console.log('Using stored selection element for append:', targetElement);
+            }
+            
+            // Handle different types of editable elements
+            if (targetElement.tagName === 'TEXTAREA' || targetElement.tagName === 'INPUT') {
+                console.log('Processing textarea/input element for append');
+                // For textarea and input elements - use stored selection info if available
+                let startPos, endPos;
+                if (selectionInfo && selectionInfo.element === targetElement) {
+                    startPos = selectionInfo.selectionStart;
+                    endPos = selectionInfo.selectionEnd;
+                    console.log('Using stored positions for append:', { startPos, endPos });
+                } else {
+                    startPos = targetElement.selectionStart;
+                    endPos = targetElement.selectionEnd;
+                    console.log('Using current positions for append:', { startPos, endPos });
+                }
+                
+                const currentValue = targetElement.value;
+                
+                // Append after the selected text
+                const textToAppend = ' ' + newText;
+                const newValue = currentValue.substring(0, endPos) + textToAppend + currentValue.substring(endPos);
+                targetElement.value = newValue;
+                
+                // Set cursor position after the appended text
+                targetElement.selectionStart = targetElement.selectionEnd = endPos + textToAppend.length;
+                targetElement.focus();
+                
+                console.log('Text append completed for form element');
+                
+            } else if (element.isContentEditable || element.contentEditable === 'true') {
+                // For contentEditable elements
+                selection.removeAllRanges();
+                selection.addRange(selectionRange);
+                
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    range.collapse(false); // Move to end of selection
+                    
+                    // Create text to append (with a space prefix)
+                    const textToAppend = ' ' + newText;
+                    
+                    // Handle newlines in the appended text
+                    if (textToAppend.includes('\n')) {
+                        // Replace newlines with <br> for contentEditable
+                        const htmlContent = textToAppend.replace(/\n/g, '<br>');
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = htmlContent;
+                        
+                        // Insert all child nodes
+                        while (tempDiv.firstChild) {
+                            range.insertNode(tempDiv.firstChild);
+                        }
+                    } else {
+                        range.insertNode(document.createTextNode(textToAppend));
+                    }
+                    
+                    // Position cursor after inserted text
+                    range.collapse(false);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+            } else {
+                // Fallback for other elements (read-only)
+                showToast('Cannot append text to this element', 'error');
+                return;
+            }
+            
+            console.log('Text appended successfully');
+            
+        } catch (error) {
+            console.error('Error appending text:', error);
+            showToast('Error appending text', 'error');
+        }
+    }
+    
+    // Simple markdown parser for better readability
+    function parseMarkdown(text) {
+        return text
+            // Headers
+            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+            // Bold text
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/__(.*?)__/g, '<strong>$1</strong>')
+            // Italic text
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/_(.*?)_/g, '<em>$1</em>')
+            // Code blocks
+            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+            // Inline code
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            // Lists
+            .replace(/^\* (.*$)/gm, '<li>$1</li>')
+            .replace(/^- (.*$)/gm, '<li>$1</li>')
+            .replace(/^\d+\. (.*$)/gm, '<li>$1</li>')
+            // Wrap lists
+            .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+            // Line breaks
+            .replace(/\n\n/g, '</p><p>')
+            .replace(/\n/g, '<br>')
+            // Wrap in paragraphs
+            .replace(/^(?!<[hul])/gm, '<p>')
+            .replace(/$/gm, '</p>')
+            // Clean up extra tags
+            .replace(/<p><\/p>/g, '')
+            .replace(/<p>(<[hul])/g, '$1')
+            .replace(/(<\/[hul][^>]*>)<\/p>/g, '$1');
     }
     
     // Copy text to clipboard
@@ -368,7 +581,7 @@
     }
     
     // Create and show modal
-    function createModal(title, content, type = 'info') {
+    function createModal(title, content, type = 'info', preservedSelection = null) {
         try {
             console.log('Creating modal:', title, type);
             if (currentModal) {
@@ -411,7 +624,14 @@
         } else {
             const contentDiv = document.createElement('div');
             contentDiv.className = 'notevault-modal-text';
-            contentDiv.textContent = content;
+            
+            // Parse markdown for explanation content
+            if (type === 'info' && title === 'Explanation') {
+                contentDiv.innerHTML = parseMarkdown(content);
+            } else {
+                contentDiv.textContent = content;
+            }
+            
             body.appendChild(contentDiv);
             
             if (type === 'editable') {
@@ -422,6 +642,13 @@
                 replaceBtn.className = 'notevault-modal-btn notevault-btn-primary';
                 replaceBtn.textContent = 'Replace';
                 replaceBtn.addEventListener('click', () => {
+                    // Restore selection data if preserved
+                    if (preservedSelection) {
+                        selectedText = preservedSelection.selectedText;
+                        selectionRange = preservedSelection.selectionRange;
+                        selectionInfo = preservedSelection.selectionInfo;
+                        console.log('Restored selection data for replace:', preservedSelection);
+                    }
                     replaceSelectedText(content);
                     closeModal();
                     showToast('Text replaced!');
@@ -431,6 +658,13 @@
                 appendBtn.className = 'notevault-modal-btn notevault-btn-secondary';
                 appendBtn.textContent = 'Append';
                 appendBtn.addEventListener('click', () => {
+                    // Restore selection data if preserved
+                    if (preservedSelection) {
+                        selectedText = preservedSelection.selectedText;
+                        selectionRange = preservedSelection.selectionRange;
+                        selectionInfo = preservedSelection.selectionInfo;
+                        console.log('Restored selection data for append:', preservedSelection);
+                    }
                     appendToSelectedText(content);
                     closeModal();
                     showToast('Text appended!');
