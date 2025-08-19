@@ -9,8 +9,7 @@
     "commands",
     "contextMenus",
     "notifications",
-    "scripting",
-    "host_permissions"
+    "scripting"
   ],
   "host_permissions": [
     "https://dashscope-intl.aliyuncs.com/*"
