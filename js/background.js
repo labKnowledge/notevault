@@ -76,14 +76,198 @@ chrome.contextMenus.onClicked.addListener(function(info, tab) {
 
 // Handle messages from content script
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+    console.log('Background received message:', request.action, request.text?.substring(0, 50));
+    
     if (request.action === 'saveNote') {
         saveNote(request.note, sendResponse);
         return true; // Keep message channel open for async response
     } else if (request.action === 'extractPageContent') {
         sendResponse({ success: true });
         return true;
+    } else if (request.action === 'explainText') {
+        handleAIAction('explain', request.text, sendResponse);
+        return true;
+    } else if (request.action === 'proofreadText') {
+        handleAIAction('proofread', request.text, sendResponse);
+        return true;
+    } else if (request.action === 'refineText') {
+        handleAIAction('refine', request.text, sendResponse);
+        return true;
     }
 });
+
+// Global AI agent variable for service worker context
+let aiAgent = null;
+
+// Handle AI actions (explain, proofread, refine)
+async function handleAIAction(action, text, callback) {
+    console.log(`AI Action requested: ${action} for text: "${text.substring(0, 50)}..."`);
+    
+    try {
+        // Initialize AI if not already done
+        if (!aiAgent) {
+            console.log('Initializing AI agent...');
+            await initializeAI();
+        }
+        
+        if (!aiAgent) {
+            console.error('AI agent failed to initialize');
+            callback({ success: false, error: 'AI agent failed to initialize' });
+            return;
+        }
+        
+        if (!aiAgent.isAvailable()) {
+            console.error('AI agent not available - missing configuration');
+            callback({ success: false, error: 'AI service not available. Please configure your API settings in the extension options.' });
+            return;
+        }
+        
+        console.log('AI agent is available, proceeding with action:', action);
+        let result = '';
+        
+        switch (action) {
+            case 'explain':
+                result = await explainText(text);
+                console.log('Explain result:', result.substring(0, 100) + '...');
+                callback({ success: true, result: result });
+                break;
+                
+            case 'proofread':
+                result = await proofreadText(text);
+                console.log('Proofread result:', result.substring(0, 100) + '...');
+                callback({ success: true, result: result });
+                break;
+                
+            case 'refine':
+                result = await refineText(text);
+                console.log('Refine result:', result.substring(0, 100) + '...');
+                callback({ success: true, result: result });
+                break;
+                
+            default:
+                console.error('Unknown AI action:', action);
+                callback({ success: false, error: 'Unknown action' });
+        }
+    } catch (error) {
+        console.error('AI Action failed:', error);
+        callback({ success: false, error: error.message });
+    }
+}
+
+// Initialize AI agent
+async function initializeAI() {
+    try {
+        console.log('Loading AI config from storage...');
+        // Load AI config from storage (compatible with main app config)
+        const stored = await chrome.storage.local.get(['ai_config']);
+        const config = stored.ai_config || {
+            apiKey: '',
+            baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+            model: 'qwen-plus'
+        };
+        
+        console.log('AI config loaded:', { 
+            hasApiKey: !!config.apiKey, 
+            baseUrl: config.baseUrl, 
+            model: config.model 
+        });
+        
+        // Create AI agent using the stored configuration (service worker compatible)
+        aiAgent = {
+            config: config,
+            isAvailable() {
+                const available = this.config.apiKey && this.config.baseUrl && this.config.model;
+                console.log('AI availability check:', available);
+                return available;
+            },
+            async makeAPICall(messages, temperature = 0.7, maxTokens = 1000) {
+                if (!this.isAvailable()) {
+                    throw new Error('AI Agent not configured. Please set your API key in the extension options.');
+                }
+                
+                const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.config.apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: this.config.model,
+                        messages: messages,
+                        temperature: temperature,
+                        max_tokens: maxTokens,
+                        stream: false
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API call failed: ${response.status} - ${errorText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+                    throw new Error('Invalid API response structure');
+                }
+                
+                return data.choices[0].message.content;
+            }
+        };
+    } catch (error) {
+        console.error('Failed to initialize AI:', error);
+        throw error;
+    }
+}
+
+// Explain text using AI
+async function explainText(text) {
+    const messages = [
+        {
+            role: "system",
+            content: "You are a helpful assistant that explains text clearly and comprehensively. Provide detailed explanations that help users understand the content, context, key concepts, and implications."
+        },
+        {
+            role: "user",
+            content: `Please explain this text in detail:\n\n"${text}"\n\nProvide a clear explanation covering:\n1. Main concepts and ideas\n2. Context and background\n3. Key points and takeaways\n4. Any implications or significance`
+        }
+    ];
+    
+    return await aiAgent.makeAPICall(messages, 0.7, 1500);
+}
+
+// Proofread text using AI
+async function proofreadText(text) {
+    const messages = [
+        {
+            role: "system",
+            content: "You are a professional proofreader and editor. Fix grammar, spelling, punctuation, and improve clarity while maintaining the original meaning and tone. Return only the corrected text without explanations."
+        },
+        {
+            role: "user",
+            content: `Please proofread and correct this text:\n\n"${text}"`
+        }
+    ];
+    
+    return await aiAgent.makeAPICall(messages, 0.3, 1000);
+}
+
+// Refine text using AI
+async function refineText(text) {
+    const messages = [
+        {
+            role: "system",
+            content: "You are a professional writer and editor. Enhance the given text by improving clarity, flow, word choice, and overall quality while preserving the original meaning and intent. Make it more polished and professional. Return only the refined text without explanations."
+        },
+        {
+            role: "user",
+            content: `Please refine and enhance this text:\n\n"${text}"`
+        }
+    ];
+    
+    return await aiAgent.makeAPICall(messages, 0.7, 1000);
+}
+
 
 // Save selected text as note
 function saveSelectedTextAsNote(selectedText, tab) {

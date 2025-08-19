@@ -123,16 +123,24 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load current settings
     async function loadSettings() {
-        if (window.aiConfig) {
-            const config = window.aiConfig.getConfig();
-            const status = window.aiConfig.getStatus();
+        try {
+            const stored = await chrome.storage.local.get(['ai_config']);
+            const config = stored.ai_config || {
+                apiKey: '',
+                baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+                model: 'qwen-plus'
+            };
             
             apiKeyInput.value = config.apiKey || '';
             modelSelect.value = config.model || 'qwen-plus';
             
-            aiStatusText.textContent = status.configured ? 
-                `AI Status: Connected (${status.model})` : 
+            const isConfigured = config.apiKey && config.baseUrl && config.model;
+            aiStatusText.textContent = isConfigured ? 
+                `AI Status: Connected (${config.model})` : 
                 'AI Status: Not configured';
+        } catch (error) {
+            console.error('Error loading settings:', error);
+            aiStatusText.textContent = 'AI Status: Error loading config';
         }
     }
 
@@ -146,18 +154,24 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        if (window.aiConfig) {
-            await window.aiConfig.updateConfig({
+        try {
+            const config = {
                 apiKey: apiKey,
+                baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
                 model: model
-            });
+            };
             
-            const status = window.aiConfig.getStatus();
-            aiStatusText.textContent = status.configured ? 
-                `AI Status: Connected (${status.model})` : 
+            await chrome.storage.local.set({ ai_config: config });
+            
+            const isConfigured = config.apiKey && config.baseUrl && config.model;
+            aiStatusText.textContent = isConfigured ? 
+                `AI Status: Connected (${config.model})` : 
                 'AI Status: Configuration error';
             
             alert('Settings saved successfully!');
+        } catch (error) {
+            console.error('Error saving settings:', error);
+            alert('Error saving settings: ' + error.message);
         }
     });
 
