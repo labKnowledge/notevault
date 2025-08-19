@@ -19,30 +19,51 @@
         // Save as Note button (always visible)
         const saveButton = document.createElement('button');
         saveButton.className = 'notevault-button notevault-save-button';
-        saveButton.textContent = 'Save as Note';
+        saveButton.title = 'Save as Note';
         saveButton.addEventListener('click', handleSaveNote);
         buttonContainer.appendChild(saveButton);
         
         // Explain button (always visible)
         const explainButton = document.createElement('button');
         explainButton.className = 'notevault-button notevault-explain-button';
-        explainButton.textContent = 'Explain';
+        explainButton.title = 'Explain';
         explainButton.addEventListener('click', handleExplain);
         buttonContainer.appendChild(explainButton);
         
         // Proofread button (only for editable fields)
         const proofreadButton = document.createElement('button');
         proofreadButton.className = 'notevault-button notevault-proofread-button';
-        proofreadButton.textContent = 'Proofread';
+        proofreadButton.title = 'Proofread';
         proofreadButton.addEventListener('click', handleProofread);
         buttonContainer.appendChild(proofreadButton);
         
         // Refine button (only for editable fields)
         const refineButton = document.createElement('button');
         refineButton.className = 'notevault-button notevault-refine-button';
-        refineButton.textContent = 'Refine';
+        refineButton.title = 'Refine';
         refineButton.addEventListener('click', handleRefine);
         buttonContainer.appendChild(refineButton);
+        
+        // Expand button (only for editable fields)
+        const expandButton = document.createElement('button');
+        expandButton.className = 'notevault-button notevault-expand-button';
+        expandButton.title = 'Expand';
+        expandButton.addEventListener('click', handleExpand);
+        buttonContainer.appendChild(expandButton);
+        
+        // Humanize button (only for editable fields)
+        const humanizeButton = document.createElement('button');
+        humanizeButton.className = 'notevault-button notevault-humanize-button';
+        humanizeButton.title = 'Humanize';
+        humanizeButton.addEventListener('click', handleHumanize);
+        buttonContainer.appendChild(humanizeButton);
+        
+        // Generate button (only for editable fields)
+        const generateButton = document.createElement('button');
+        generateButton.className = 'notevault-button notevault-generate-button';
+        generateButton.title = 'Generate';
+        generateButton.addEventListener('click', handleGenerate);
+        buttonContainer.appendChild(generateButton);
         
         document.body.appendChild(buttonContainer);
         
@@ -85,13 +106,22 @@
         // Show/hide buttons based on context
         const proofreadButton = buttonContainer.querySelector('.notevault-proofread-button');
         const refineButton = buttonContainer.querySelector('.notevault-refine-button');
+        const expandButton = buttonContainer.querySelector('.notevault-expand-button');
+        const humanizeButton = buttonContainer.querySelector('.notevault-humanize-button');
+        const generateButton = buttonContainer.querySelector('.notevault-generate-button');
         
         if (isEditableField) {
             proofreadButton.style.display = 'block';
             refineButton.style.display = 'block';
+            expandButton.style.display = 'block';
+            humanizeButton.style.display = 'block';
+            generateButton.style.display = 'block';
         } else {
             proofreadButton.style.display = 'none';
             refineButton.style.display = 'none';
+            expandButton.style.display = 'none';
+            humanizeButton.style.display = 'none';
+            generateButton.style.display = 'none';
         }
     }
     
@@ -307,6 +337,63 @@
         });
     }
     
+    // Expand text function
+    function handleExpand() {
+        if (!selectedText || !isEditableField) return;
+        
+        // Check AI configuration first
+        checkAIConfig((isConfigured, error) => {
+            if (!isConfigured) {
+                showToast(error, 'error');
+                return;
+            }
+            
+            // Show loading modal
+            createModal('Expanding Text', 'Adding more detail and context...', 'loading');
+            hideButtons();
+            
+            sendExpandRequest();
+        });
+    }
+    
+    // Humanize text function
+    function handleHumanize() {
+        if (!selectedText || !isEditableField) return;
+        
+        // Check AI configuration first
+        checkAIConfig((isConfigured, error) => {
+            if (!isConfigured) {
+                showToast(error, 'error');
+                return;
+            }
+            
+            // Show loading modal
+            createModal('Humanizing Text', 'Making text more natural and conversational...', 'loading');
+            hideButtons();
+            
+            sendHumanizeRequest();
+        });
+    }
+    
+    // Generate text function (open-ended)
+    function handleGenerate() {
+        if (!selectedText || !isEditableField) return;
+        
+        // Check AI configuration first
+        checkAIConfig((isConfigured, error) => {
+            if (!isConfigured) {
+                showToast(error, 'error');
+                return;
+            }
+            
+            // Show loading modal
+            createModal('Generating Content', 'Using selected text as a prompt...', 'loading');
+            hideButtons();
+            
+            sendGenerateRequest();
+        });
+    }
+    
     function sendRefineRequest() {
         // Send message to background script for AI processing
         chrome.runtime.sendMessage({
@@ -333,6 +420,99 @@
             } else {
                 closeModal();
                 const errorMsg = response?.error || 'Failed to refine text';
+                showToast(errorMsg, 'error');
+            }
+            window.getSelection().removeAllRanges();
+        });
+    }
+    
+    function sendExpandRequest() {
+        // Send message to background script for AI processing
+        chrome.runtime.sendMessage({
+            action: 'expandText',
+            text: selectedText
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error('Chrome runtime error:', chrome.runtime.lastError);
+                closeModal();
+                showToast('Extension communication error', 'error');
+                return;
+            }
+            
+            if (response && response.success && response.result) {
+                // Preserve selection data for the modal actions
+                const preservedSelectionData = {
+                    selectedText: selectedText,
+                    selectionRange: selectionRange,
+                    selectionInfo: selectionInfo
+                };
+                // Show expanded text in modal with action buttons
+                createModal('Expanded Text', response.result, 'editable', preservedSelectionData);
+            } else {
+                closeModal();
+                const errorMsg = response?.error || 'Failed to expand text';
+                showToast(errorMsg, 'error');
+            }
+            window.getSelection().removeAllRanges();
+        });
+    }
+    
+    function sendHumanizeRequest() {
+        // Send message to background script for AI processing
+        chrome.runtime.sendMessage({
+            action: 'humanizeText',
+            text: selectedText
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error('Chrome runtime error:', chrome.runtime.lastError);
+                closeModal();
+                showToast('Extension communication error', 'error');
+                return;
+            }
+            
+            if (response && response.success && response.result) {
+                // Preserve selection data for the modal actions
+                const preservedSelectionData = {
+                    selectedText: selectedText,
+                    selectionRange: selectionRange,
+                    selectionInfo: selectionInfo
+                };
+                // Show humanized text in modal with action buttons
+                createModal('Humanized Text', response.result, 'editable', preservedSelectionData);
+            } else {
+                closeModal();
+                const errorMsg = response?.error || 'Failed to humanize text';
+                showToast(errorMsg, 'error');
+            }
+            window.getSelection().removeAllRanges();
+        });
+    }
+    
+    function sendGenerateRequest() {
+        // Send message to background script for AI processing
+        chrome.runtime.sendMessage({
+            action: 'generateText',
+            text: selectedText
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error('Chrome runtime error:', chrome.runtime.lastError);
+                closeModal();
+                showToast('Extension communication error', 'error');
+                return;
+            }
+            
+            if (response && response.success && response.result) {
+                // Preserve selection data for the modal actions
+                const preservedSelectionData = {
+                    selectedText: selectedText,
+                    selectionRange: selectionRange,
+                    selectionInfo: selectionInfo
+                };
+                // Show generated text in modal with action buttons
+                createModal('Generated Content', response.result, 'editable', preservedSelectionData);
+            } else {
+                closeModal();
+                const errorMsg = response?.error || 'Failed to generate content';
                 showToast(errorMsg, 'error');
             }
             window.getSelection().removeAllRanges();

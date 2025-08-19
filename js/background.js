@@ -93,6 +93,15 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     } else if (request.action === 'refineText') {
         handleAIAction('refine', request.text, sendResponse);
         return true;
+    } else if (request.action === 'expandText') {
+        handleAIAction('expand', request.text, sendResponse);
+        return true;
+    } else if (request.action === 'humanizeText') {
+        handleAIAction('humanize', request.text, sendResponse);
+        return true;
+    } else if (request.action === 'generateText') {
+        handleAIAction('generate', request.text, sendResponse);
+        return true;
     }
 });
 
@@ -141,6 +150,24 @@ async function handleAIAction(action, text, callback) {
             case 'refine':
                 result = await refineText(text);
                 console.log('Refine result:', result.substring(0, 100) + '...');
+                callback({ success: true, result: result });
+                break;
+                
+            case 'expand':
+                result = await expandText(text);
+                console.log('Expand result:', result.substring(0, 100) + '...');
+                callback({ success: true, result: result });
+                break;
+                
+            case 'humanize':
+                result = await humanizeText(text);
+                console.log('Humanize result:', result.substring(0, 100) + '...');
+                callback({ success: true, result: result });
+                break;
+                
+            case 'generate':
+                result = await generateText(text);
+                console.log('Generate result:', result.substring(0, 100) + '...');
                 callback({ success: true, result: result });
                 break;
                 
@@ -266,6 +293,54 @@ async function refineText(text) {
     ];
     
     return await aiAgent.makeAPICall(messages, 0.7, 1000);
+}
+
+// Expand text using AI
+async function expandText(text) {
+    const messages = [
+        {
+            role: "system",
+            content: "You are a skilled content writer. Expand the given text by adding more detail, context, examples, and supporting information while maintaining the original tone and style. Make it more comprehensive and informative. Return only the expanded text without explanations."
+        },
+        {
+            role: "user",
+            content: `Please expand this text with more detail and context:\n\n"${text}"`
+        }
+    ];
+    
+    return await aiAgent.makeAPICall(messages, 0.7, 1500);
+}
+
+// Humanize text using AI
+async function humanizeText(text) {
+    const messages = [
+        {
+            role: "system",
+            content: "You are a conversational writing expert. Transform the given text to make it more natural, conversational, and human-like while maintaining its core message. Use a friendly tone, varied sentence structure, and natural language patterns. Return only the humanized text without explanations."
+        },
+        {
+            role: "user",
+            content: `Please make this text more natural and conversational:\n\n"${text}"`
+        }
+    ];
+    
+    return await aiAgent.makeAPICall(messages, 0.8, 1000);
+}
+
+// Generate text using AI (open-ended based on input as prompt)
+async function generateText(text) {
+    const messages = [
+        {
+            role: "system",
+            content: "You are a creative and helpful AI assistant. Use the provided text as a prompt or instruction to generate relevant, useful, and well-structured content. Interpret the user's intent and create appropriate content based on what they've provided. Be creative but maintain quality and relevance."
+        },
+        {
+            role: "user",
+            content: text
+        }
+    ];
+    
+    return await aiAgent.makeAPICall(messages, 0.8, 1500);
 }
 
 
