@@ -2319,8 +2319,14 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        // Add loading state to enhance button
+        const enhanceButton = document.getElementById('ai-enhance-btn');
+        if (enhanceButton) {
+            enhanceButton.classList.add('loading');
+            enhanceButton.disabled = true;
+        }
+        
         try {
-            showToast('Enhancing content with AI...', 'info');
             const enhancement = await app.aiService.manualEnhanceContent(app.editingNote);
             if (enhancement) {
                 // Show enhancement options to user
@@ -2332,6 +2338,12 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('Content enhancement failed:', error);
             showToast(`Enhancement failed: ${error.message}`, 'error');
+        } finally {
+            // Remove loading state from button
+            if (enhanceButton) {
+                enhanceButton.classList.remove('loading');
+                enhanceButton.disabled = false;
+            }
         }
     }
     
@@ -2341,8 +2353,14 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        // Add loading state to analyze button
+        const analyzeButton = document.getElementById('ai-analyze-btn');
+        if (analyzeButton) {
+            analyzeButton.classList.add('loading');
+            analyzeButton.disabled = true;
+        }
+        
         try {
-            showToast('Analyzing note...', 'info');
             const analysis = await app.aiService.manualAnalyzeNote(app.editingNote);
             if (analysis) {
                 app.aiService.showAnalysisInsights(analysis);
@@ -2353,6 +2371,12 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('Note analysis failed:', error);
             showToast(`Analysis failed: ${error.message}`, 'error');
+        } finally {
+            // Remove loading state from button
+            if (analyzeButton) {
+                analyzeButton.classList.remove('loading');
+                analyzeButton.disabled = false;
+            }
         }
     }
     

@@ -105,12 +105,35 @@ class NoteVaultAIService {
             // Enhance content if requested
             if (enableContentEnhancement && this.ai.isAvailable()) {
                 console.log("Enhancing the text")
-                const enhancement = await this.ai.enhanceContent(note);
-                if (enhancement) {
-                    note.aiContentEnhancement = enhancement;
-                    if (showSuggestions) {
-                        console.log("done enhancement")
-                        this.showContentEnhancement(note, enhancement);
+                
+                // Show loading indicator for content enhancement
+                if (showSuggestions && this.showProcessingIndicator) {
+                    this.showProcessingIndicator('enhancement', 'Enhancing content with AI...');
+                }
+                
+                try {
+                    const enhancement = await this.ai.enhanceContent(note);
+                    if (enhancement) {
+                        note.aiContentEnhancement = enhancement;
+                        if (showSuggestions) {
+                            console.log("done enhancement")
+                            // Hide loading indicator before showing enhancement
+                            if (this.hideProcessingIndicator) {
+                                this.hideProcessingIndicator();
+                            }
+                            
+                            // Small delay for smooth transition
+                            setTimeout(() => {
+                                this.showContentEnhancement(note, enhancement);
+                            }, 200);
+                        }
+                    } else if (showSuggestions && this.hideProcessingIndicator) {
+                        this.hideProcessingIndicator();
+                    }
+                } catch (error) {
+                    console.error('Content enhancement failed:', error);
+                    if (showSuggestions && this.hideProcessingIndicator) {
+                        this.hideProcessingIndicator();
                     }
                 }
             }
@@ -827,79 +850,178 @@ class NoteVaultAIService {
     // Create analysis modal
     createAnalysisModal(analysis) {
         const modal = document.createElement('div');
-        modal.className = 'ai-suggestion-panel analysis-modal';
+        modal.className = 'ai-suggestion-panel analysis-modal professional-modal';
+        
+        // Helper function to get priority display info
+        const getPriorityInfo = (level) => {
+            const priorities = {
+                urgent: { color: '#e53e3e', icon: 'fas fa-exclamation-triangle', label: 'Urgent' },
+                high: { color: '#dd6b20', icon: 'fas fa-chevron-up', label: 'High Priority' },
+                medium: { color: '#d69e2e', icon: 'fas fa-minus', label: 'Medium Priority' },
+                low: { color: '#38a169', icon: 'fas fa-chevron-down', label: 'Low Priority' }
+            };
+            return priorities[level] || priorities.medium;
+        };
+        
+        // Helper function to get quality score color
+        const getQualityColor = (score) => {
+            if (score >= 8) return '#38a169'; // Green
+            if (score >= 6) return '#d69e2e'; // Yellow
+            if (score >= 4) return '#dd6b20'; // Orange
+            return '#e53e3e'; // Red
+        };
+        
+        const priorityInfo = getPriorityInfo(analysis.priority_level);
+        const qualityColor = getQualityColor(analysis.quality_score);
+        
         modal.innerHTML = `
-            <div class="ai-suggestion-header">
-                <h3><i class="fas fa-brain"></i> AI Analysis Results</h3>
+            <div class="ai-suggestion-header professional-header">
+                <div class="header-content">
+                    <div class="header-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="header-text">
+                        <h3>Content Analysis Report</h3>
+                        <p class="header-subtitle">AI-powered insights and recommendations</p>
+                    </div>
+                </div>
                 <button class="ai-close-btn">&times;</button>
             </div>
-            <div class="ai-suggestion-content">
-                <div class="analysis-grid">
-                    <div class="analysis-card">
-                        <div class="analysis-metric">
-                            <span class="metric-value">${analysis.quality_score}/10</span>
-                            <span class="metric-label">Quality Score</span>
+            <div class="ai-suggestion-content professional-content">
+                <!-- Executive Summary -->
+                <div class="executive-summary">
+                    <h4 class="section-title">
+                        <i class="fas fa-clipboard-list"></i>
+                        Executive Summary
+                    </h4>
+                    <div class="summary-grid">
+                        <div class="summary-card quality-card">
+                            <div class="card-header">
+                                <i class="fas fa-star" style="color: ${qualityColor}"></i>
+                                <span class="card-title">Quality Assessment</span>
+                            </div>
+                            <div class="metric-display">
+                                <span class="metric-number" style="color: ${qualityColor}">${analysis.quality_score}</span>
+                                <span class="metric-denominator">/10</span>
+                            </div>
+                            <div class="metric-description">
+                                ${analysis.quality_score >= 8 ? 'Excellent content quality' : 
+                                  analysis.quality_score >= 6 ? 'Good content quality' : 
+                                  analysis.quality_score >= 4 ? 'Fair content quality' : 'Needs improvement'}
+                            </div>
                         </div>
-                    </div>
-                    <div class="analysis-card">
-                        <div class="analysis-metric">
-                            <span class="metric-value priority-${analysis.priority_level}">${analysis.priority_level}</span>
-                            <span class="metric-label">Priority Level</span>
+                        
+                        <div class="summary-card priority-card">
+                            <div class="card-header">
+                                <i class="${priorityInfo.icon}" style="color: ${priorityInfo.color}"></i>
+                                <span class="card-title">Priority Level</span>
+                            </div>
+                            <div class="priority-badge" style="background-color: ${priorityInfo.color}20; color: ${priorityInfo.color}; border: 1px solid ${priorityInfo.color}40">
+                                ${priorityInfo.label}
+                            </div>
                         </div>
-                    </div>
-                    <div class="analysis-card">
-                        <div class="analysis-metric">
-                            <span class="metric-value">${analysis.emotional_tone}</span>
-                            <span class="metric-label">Emotional Tone</span>
+                        
+                        <div class="summary-card tone-card">
+                            <div class="card-header">
+                                <i class="fas fa-heart" style="color: #805ad5"></i>
+                                <span class="card-title">Emotional Tone</span>
+                            </div>
+                            <div class="tone-display">
+                                ${analysis.emotional_tone}
+                            </div>
                         </div>
                     </div>
                 </div>
                 
+                <!-- Key Insights -->
+                <div class="analysis-section insights-section">
+                    <h4 class="section-title">
+                        <i class="fas fa-lightbulb"></i>
+                        Key Insights
+                    </h4>
+                    <div class="insight-content">
+                        <p class="insight-text">${analysis.insights}</p>
+                    </div>
+                </div>
+                
                 ${analysis.main_themes.length > 0 ? `
-                    <div class="analysis-section">
-                        <h4><i class="fas fa-tags"></i> Main Themes</h4>
-                        <div class="theme-tags">
-                            ${analysis.main_themes.map(theme => `<span class="theme-tag">${theme}</span>`).join('')}
+                    <div class="analysis-section themes-section">
+                        <h4 class="section-title">
+                            <i class="fas fa-tags"></i>
+                            Main Themes (${analysis.main_themes.length})
+                        </h4>
+                        <div class="theme-tags professional-tags">
+                            ${analysis.main_themes.map(theme => `<span class="theme-tag professional-tag">${theme}</span>`).join('')}
                         </div>
                     </div>
                 ` : ''}
                 
                 ${analysis.actionable_items.length > 0 ? `
-                    <div class="analysis-section">
-                        <h4><i class="fas fa-tasks"></i> Action Items</h4>
-                        <ul class="action-items">
-                            ${analysis.actionable_items.map(item => `<li><i class="fas fa-arrow-right"></i> ${item}</li>`).join('')}
-                        </ul>
-                    </div>
-                ` : ''}
-                
-                ${analysis.suggested_improvements.length > 0 ? `
-                    <div class="analysis-section">
-                        <h4><i class="fas fa-lightbulb"></i> Suggested Improvements</h4>
-                        <ul class="improvement-list">
-                            ${analysis.suggested_improvements.map(improvement => `<li><i class="fas fa-plus-circle"></i> ${improvement}</li>`).join('')}
-                        </ul>
-                    </div>
-                ` : ''}
-                
-                <div class="analysis-section">
-                    <h4><i class="fas fa-robot"></i> AI Insights</h4>
-                    <p class="insight-text">${analysis.insights}</p>
-                </div>
-                
-                ${analysis.related_topics.length > 0 ? `
-                    <div class="analysis-section">
-                        <h4><i class="fas fa-network-wired"></i> Related Topics</h4>
-                        <div class="related-topics">
-                            ${analysis.related_topics.map(topic => `<span class="topic-tag">${topic}</span>`).join('')}
+                    <div class="analysis-section actions-section">
+                        <h4 class="section-title">
+                            <i class="fas fa-clipboard-check"></i>
+                            Action Items (${analysis.actionable_items.length})
+                        </h4>
+                        <div class="action-items professional-list">
+                            ${analysis.actionable_items.map((item, index) => `
+                                <div class="action-item">
+                                    <div class="action-number">${index + 1}</div>
+                                    <div class="action-content">
+                                        <i class="fas fa-arrow-right action-icon"></i>
+                                        ${item}
+                                    </div>
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
                 ` : ''}
                 
-                <div class="analysis-actions">
-                    <button class="btn btn-primary" id="apply-insights">Apply Suggestions</button>
-                    <button class="btn btn-secondary" id="save-analysis">Save Analysis</button>
-                    <button class="btn btn-secondary" id="close-analysis">Close</button>
+                ${analysis.suggested_improvements.length > 0 ? `
+                    <div class="analysis-section improvements-section">
+                        <h4 class="section-title">
+                            <i class="fas fa-chart-line"></i>
+                            Improvement Suggestions (${analysis.suggested_improvements.length})
+                        </h4>
+                        <div class="improvement-list professional-list">
+                            ${analysis.suggested_improvements.map((improvement, index) => `
+                                <div class="improvement-item">
+                                    <div class="improvement-icon">
+                                        <i class="fas fa-plus-circle"></i>
+                                    </div>
+                                    <div class="improvement-content">
+                                        ${improvement}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${analysis.related_topics.length > 0 ? `
+                    <div class="analysis-section topics-section">
+                        <h4 class="section-title">
+                            <i class="fas fa-sitemap"></i>
+                            Related Topics (${analysis.related_topics.length})
+                        </h4>
+                        <div class="related-topics professional-tags">
+                            ${analysis.related_topics.map(topic => `<span class="topic-tag professional-tag related-tag">${topic}</span>`).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                <div class="analysis-actions professional-actions">
+                    <button class="btn btn-primary professional-btn" id="apply-insights">
+                        <i class="fas fa-check"></i>
+                        Apply Suggestions
+                    </button>
+                    <button class="btn btn-secondary professional-btn" id="save-analysis">
+                        <i class="fas fa-save"></i>
+                        Save Analysis
+                    </button>
+                    <button class="btn btn-secondary professional-btn" id="close-analysis">
+                        <i class="fas fa-times"></i>
+                        Close
+                    </button>
                 </div>
             </div>
         `;
@@ -1005,11 +1127,51 @@ class NoteVaultAIService {
 
     // Public methods for manual AI operations
     async manualAnalyzeNote(note) {
-        return await this.ai.analyzeNote(note);
+        // Show loading indicator for analysis
+        if (this.showProcessingIndicator) {
+            this.showProcessingIndicator('analyze', 'Analyzing note with AI...');
+        }
+        
+        try {
+            const result = await this.ai.analyzeNote(note);
+            
+            // Hide loading indicator before showing result
+            if (this.hideProcessingIndicator) {
+                this.hideProcessingIndicator();
+            }
+            
+            return result;
+        } catch (error) {
+            // Hide loading indicator on error
+            if (this.hideProcessingIndicator) {
+                this.hideProcessingIndicator();
+            }
+            throw error;
+        }
     }
 
     async manualEnhanceContent(note) {
-        return await this.ai.enhanceContent(note);
+        // Show loading indicator for manual enhancement
+        if (this.showProcessingIndicator) {
+            this.showProcessingIndicator('enhancement', 'Enhancing content with AI...');
+        }
+        
+        try {
+            const result = await this.ai.enhanceContent(note);
+            
+            // Hide loading indicator before showing result
+            if (this.hideProcessingIndicator) {
+                this.hideProcessingIndicator();
+            }
+            
+            return result;
+        } catch (error) {
+            // Hide loading indicator on error
+            if (this.hideProcessingIndicator) {
+                this.hideProcessingIndicator();
+            }
+            throw error;
+        }
     }
 
     async manualFindRelatedNotes(note, allNotes) {
