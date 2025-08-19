@@ -10,14 +10,19 @@
 .notevault-button {
   border: none;
   border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: 8px;
+  font-size: 16px;
   font-weight: 500;
   cursor: pointer;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   transition: all 0.2s ease;
   color: white;
   white-space: nowrap;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .notevault-button:hover {
@@ -39,8 +44,7 @@
 }
 
 .notevault-save-button::before {
-  content: '📝 ';
-  margin-right: 4px;
+  content: '📝';
 }
 
 .notevault-explain-button {
@@ -54,8 +58,7 @@
 }
 
 .notevault-explain-button::before {
-  content: '💡 ';
-  margin-right: 4px;
+  content: '💡';
 }
 
 .notevault-proofread-button {
@@ -69,8 +72,7 @@
 }
 
 .notevault-proofread-button::before {
-  content: '✏️ ';
-  margin-right: 4px;
+  content: '✏️';
 }
 
 .notevault-refine-button {
@@ -85,8 +87,49 @@
 }
 
 .notevault-refine-button::before {
-  content: '✨ ';
-  margin-right: 4px;
+  content: '✨';
+}
+
+.notevault-expand-button {
+  background: #9c27b0;
+  box-shadow: 0 2px 8px rgba(156, 39, 176, 0.3);
+}
+
+.notevault-expand-button:hover {
+  background: #7b1fa2;
+  box-shadow: 0 3px 12px rgba(156, 39, 176, 0.4);
+}
+
+.notevault-expand-button::before {
+  content: '📈';
+}
+
+.notevault-humanize-button {
+  background: #ff5722;
+  box-shadow: 0 2px 8px rgba(255, 87, 34, 0.3);
+}
+
+.notevault-humanize-button:hover {
+  background: #e64a19;
+  box-shadow: 0 3px 12px rgba(255, 87, 34, 0.4);
+}
+
+.notevault-humanize-button::before {
+  content: '🤖';
+}
+
+.notevault-generate-button {
+  background: #607d8b;
+  box-shadow: 0 2px 8px rgba(96, 125, 139, 0.3);
+}
+
+.notevault-generate-button:hover {
+  background: #455a64;
+  box-shadow: 0 3px 12px rgba(96, 125, 139, 0.4);
+}
+
+.notevault-generate-button::before {
+  content: '⚡';
 }
 
 /* Modal Styles */
