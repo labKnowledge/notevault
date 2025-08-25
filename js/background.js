@@ -360,6 +360,83 @@ async function initializeAI() {
                 }
                 
                 return data.choices[0].message.content;
+            },
+            
+            async makeStreamingAPICall(messages, temperature = 0.7, maxTokens = 1000, onChunk) {
+                if (!this.isAvailable()) {
+                    throw new Error('AI Agent not configured. Please set your API key in the extension options.');
+                }
+                
+                console.log('🚀 Starting streaming request to AI API...');
+                
+                const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.config.apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: this.config.model,
+                        messages: messages,
+                        temperature: temperature,
+                        max_tokens: maxTokens,
+                        stream: true
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Streaming API call failed: ${response.status} - ${errorText}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        
+                        if (done) {
+                            console.log('✅ Streaming completed');
+                            break;
+                        }
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        
+                        // Keep the last incomplete line in the buffer
+                        buffer = lines.pop() || '';
+                        
+                        for (const line of lines) {
+                            const trimmedLine = line.trim();
+                            if (trimmedLine === '' || !trimmedLine.startsWith('data: ')) {
+                                continue;
+                            }
+                            
+                            const dataStr = trimmedLine.slice(6); // Remove 'data: '
+                            
+                            if (dataStr === '[DONE]') {
+                                console.log('🏁 Stream ended');
+                                return;
+                            }
+                            
+                            try {
+                                const data = JSON.parse(dataStr);
+                                
+                                if (data.choices && data.choices[0] && data.choices[0].delta && data.choices[0].delta.content) {
+                                    const content = data.choices[0].delta.content;
+                                    console.log('📝 Streaming chunk:', content);
+                                    onChunk(content);
+                                }
+                            } catch (parseError) {
+                                console.warn('⚠️ Failed to parse streaming data:', parseError, 'Data:', dataStr);
+                            }
+                        }
+                    }
+                } finally {
+                    reader.releaseLock();
+                }
             }
         };
     } catch (error) {
@@ -1064,9 +1141,11 @@ async function openSidepanelWithContext(context, originalText) {
     }
 }
 
-// Handle AI queries from sidepanel
+// Handle AI queries from sidepanel with streaming support
 async function handleAIQuery(messages, temperature = 0.7, maxTokens = 1000, sendResponse) {
     try {
+        console.log('🤖 Starting streaming AI query...');
+        
         // Initialize AI if not already done
         if (!aiAgent) {
             await initializeAI();
@@ -1077,11 +1156,40 @@ async function handleAIQuery(messages, temperature = 0.7, maxTokens = 1000, send
             return;
         }
         
-        const result = await aiAgent.makeAPICall(messages, temperature, maxTokens);
-        sendResponse({ success: true, result: result });
+        // Start streaming response
+        await aiAgent.makeStreamingAPICall(messages, temperature, maxTokens, (chunk) => {
+            // Send each chunk back to sidepanel
+            chrome.runtime.sendMessage({
+                action: 'streamChunk',
+                chunk: chunk,
+                isComplete: false
+            }).catch(() => {
+                // Ignore errors - sidepanel might not be listening
+            });
+        });
+        
+        // Send completion signal
+        chrome.runtime.sendMessage({
+            action: 'streamChunk',
+            chunk: '',
+            isComplete: true
+        }).catch(() => {
+            // Ignore errors - sidepanel might not be listening
+        });
+        
+        sendResponse({ success: true, streaming: true });
         
     } catch (error) {
-        console.error('AI query failed:', error);
+        console.error('❌ AI query failed:', error);
+        
+        // Send error to sidepanel
+        chrome.runtime.sendMessage({
+            action: 'streamError',
+            error: error.message
+        }).catch(() => {
+            // Ignore errors - sidepanel might not be listening
+        });
+        
         sendResponse({ success: false, error: error.message });
     }
 }

@@ -99,6 +99,12 @@ class SidepanelAI {
             case 'addToConversation':
                 this.addExternalMessage(message.content, message.type);
                 break;
+            case 'streamChunk':
+                this.handleStreamChunk(message.chunk, message.isComplete);
+                break;
+            case 'streamError':
+                this.handleStreamError(message.error);
+                break;
             default:
                 break;
         }
@@ -200,36 +206,44 @@ class SidepanelAI {
         this.elements.messageInput.value = '';
         this.elements.sendButton.disabled = true;
         
-        // Show typing indicator
-        this.showTypingIndicator();
+        // Show streaming response placeholder
+        this.startStreamingResponse();
         
         try {
             this.isProcessing = true;
-            this.updateStatus('processing', 'Thinking...');
+            this.updateStatus('streaming', 'Streaming response...');
             
-            // Get AI response
-            const response = await this.getAIResponse(messageText);
-            
-            // Remove typing indicator
-            this.hideTypingIndicator();
-            
-            // Add assistant response
-            this.addMessage('assistant', response);
-            
-            this.updateStatus('ready', 'Ready');
+            // Start streaming AI response
+            await this.getStreamingAIResponse(messageText);
             
         } catch (error) {
             console.error('Failed to get AI response:', error);
-            this.hideTypingIndicator();
-            this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.', true);
-            this.updateStatus('error', 'Error occurred');
-        } finally {
-            this.isProcessing = false;
-            this.elements.sendButton.disabled = false;
+            this.handleStreamError(error.message);
         }
     }
     
-    async getAIResponse(userMessage) {
+    startStreamingResponse() {
+        // Create streaming message bubble
+        this.currentStreamingMessage = {
+            id: Date.now() + Math.random(),
+            type: 'assistant',
+            content: '',
+            timestamp: new Date().toISOString(),
+            isStreaming: true
+        };
+        
+        this.conversation.push(this.currentStreamingMessage);
+        this.renderStreamingMessage(this.currentStreamingMessage);
+        this.scrollToBottom();
+        
+        // Hide welcome message
+        const welcomeMessage = this.elements.conversationArea.querySelector('.welcome-message');
+        if (welcomeMessage) {
+            welcomeMessage.style.display = 'none';
+        }
+    }
+    
+    async getStreamingAIResponse(userMessage) {
         if (!this.aiConfig) {
             throw new Error('AI not configured');
         }
@@ -237,7 +251,7 @@ class SidepanelAI {
         // Build conversation context
         const messages = this.buildConversationContext(userMessage);
         
-        // Make API call through background script
+        // Make streaming API call through background script
         return new Promise((resolve, reject) => {
             chrome.runtime.sendMessage({
                 action: 'aiQuery',
@@ -250,13 +264,63 @@ class SidepanelAI {
                     return;
                 }
                 
-                if (response && response.success) {
-                    resolve(response.result);
+                if (response && response.success && response.streaming) {
+                    console.log('✅ Streaming started successfully');
+                    resolve();
                 } else {
-                    reject(new Error(response?.error || 'Unknown error'));
+                    reject(new Error(response?.error || 'Failed to start streaming'));
                 }
             });
         });
+    }
+    
+    handleStreamChunk(chunk, isComplete) {
+        if (!this.currentStreamingMessage) {
+            console.warn('⚠️ Received stream chunk but no streaming message active');
+            return;
+        }
+        
+        if (isComplete) {
+            console.log('🏁 Stream completed');
+            
+            // Finalize the streaming message
+            this.currentStreamingMessage.isStreaming = false;
+            this.updateStreamingMessage(this.currentStreamingMessage);
+            this.saveConversationHistory();
+            
+            // Reset state
+            this.currentStreamingMessage = null;
+            this.isProcessing = false;
+            this.elements.sendButton.disabled = false;
+            this.updateStatus('ready', 'Ready');
+            
+        } else {
+            // Append chunk to current message
+            this.currentStreamingMessage.content += chunk;
+            this.updateStreamingMessage(this.currentStreamingMessage);
+            this.scrollToBottom();
+        }
+    }
+    
+    handleStreamError(errorMessage) {
+        console.error('❌ Stream error:', errorMessage);
+        
+        if (this.currentStreamingMessage) {
+            // Replace streaming message with error
+            this.currentStreamingMessage.content = 'Sorry, I encountered an error. Please try again.';
+            this.currentStreamingMessage.isError = true;
+            this.currentStreamingMessage.isStreaming = false;
+            this.updateStreamingMessage(this.currentStreamingMessage);
+        } else {
+            // Add error message if no streaming message exists
+            this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.', true);
+        }
+        
+        // Reset state
+        this.currentStreamingMessage = null;
+        this.isProcessing = false;
+        this.elements.sendButton.disabled = false;
+        this.updateStatus('error', 'Error occurred');
     }
     
     buildConversationContext(userMessage) {
@@ -353,6 +417,66 @@ class SidepanelAI {
         }
     }
     
+    renderStreamingMessage(message) {
+        const messageElement = document.createElement('div');
+        messageElement.className = `message ${message.type}`;
+        messageElement.dataset.messageId = message.id;
+        
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble streaming';
+        
+        const content = document.createElement('div');
+        content.className = 'streaming-content';
+        
+        const cursor = document.createElement('span');
+        cursor.className = 'streaming-cursor';
+        cursor.innerHTML = '▊';
+        
+        bubble.appendChild(content);
+        bubble.appendChild(cursor);
+        
+        const timestamp = document.createElement('div');
+        timestamp.className = 'message-time';
+        timestamp.textContent = this.formatTime(new Date(message.timestamp));
+        
+        messageElement.appendChild(bubble);
+        messageElement.appendChild(timestamp);
+        
+        this.elements.conversationArea.appendChild(messageElement);
+        
+        return messageElement;
+    }
+    
+    updateStreamingMessage(message) {
+        const messageElement = this.elements.conversationArea.querySelector(`[data-message-id="${message.id}"]`);
+        if (!messageElement) {
+            console.warn('Could not find streaming message element');
+            return;
+        }
+        
+        const content = messageElement.querySelector('.streaming-content');
+        const cursor = messageElement.querySelector('.streaming-cursor');
+        
+        if (content) {
+            // Format and update content
+            content.innerHTML = this.formatMessageContent(message.content);
+        }
+        
+        if (message.isStreaming === false) {
+            // Remove streaming indicators when complete
+            if (cursor) {
+                cursor.remove();
+            }
+            const bubble = messageElement.querySelector('.message-bubble');
+            if (bubble) {
+                bubble.classList.remove('streaming');
+                if (message.isError) {
+                    bubble.classList.add('error-message');
+                }
+            }
+        }
+    }
+    
     formatMessageContent(content) {
         // Convert markdown to HTML
         let formatted = content
@@ -386,30 +510,6 @@ class SidepanelAI {
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     
-    showTypingIndicator() {
-        const existing = this.elements.conversationArea.querySelector('.typing-indicator');
-        if (existing) return;
-        
-        const indicator = document.createElement('div');
-        indicator.className = 'typing-indicator';
-        indicator.innerHTML = `
-            <div class="typing-bubble">
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-            </div>
-        `;
-        
-        this.elements.conversationArea.appendChild(indicator);
-        this.scrollToBottom();
-    }
-    
-    hideTypingIndicator() {
-        const indicator = this.elements.conversationArea.querySelector('.typing-indicator');
-        if (indicator) {
-            indicator.remove();
-        }
-    }
     
     scrollToBottom() {
         setTimeout(() => {
@@ -449,6 +549,9 @@ class SidepanelAI {
         const dot = this.elements.statusIndicator.querySelector('.status-dot');
         dot.className = `fas fa-circle status-dot ${type}`;
         this.elements.statusText.textContent = message;
+        
+        // Update status indicator class for streaming animation
+        this.elements.statusIndicator.className = `status-indicator ${type}`;
     }
     
     showToast(message, type = 'info') {
@@ -494,9 +597,11 @@ class SidepanelAI {
             if (result.sidepanel_conversation) {
                 this.conversation = result.sidepanel_conversation;
                 
-                // Render existing messages
+                // Render existing messages (excluding streaming ones)
                 for (const message of this.conversation) {
-                    this.renderMessage(message);
+                    if (!message.isStreaming) {
+                        this.renderMessage(message);
+                    }
                 }
                 
                 if (this.conversation.length > 0) {

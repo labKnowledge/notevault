@@ -469,3 +469,66 @@ body {
 .retry-btn:hover {
     background: #b91c1c;
 }
+
+/* Streaming message styles */
+.message-bubble.streaming {
+    position: relative;
+    background: linear-gradient(90deg, #f8fafc, #f1f5f9, #f8fafc);
+    background-size: 200% 100%;
+    animation: shimmer 2s ease-in-out infinite;
+    border: 1px solid #e2e8f0;
+}
+
+.streaming-content {
+    display: inline;
+}
+
+.streaming-cursor {
+    display: inline;
+    color: #667eea;
+    font-weight: bold;
+    animation: blink 1s infinite;
+    margin-left: 1px;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+@keyframes blink {
+    0%, 50% {
+        opacity: 1;
+    }
+    51%, 100% {
+        opacity: 0;
+    }
+}
+
+/* Streaming status indicator */
+.status-indicator.streaming {
+    color: #667eea;
+}
+
+.status-indicator.streaming .status-dot {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 0.4;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    100% {
+        opacity: 0.4;
+        transform: scale(1);
+    }
+}
