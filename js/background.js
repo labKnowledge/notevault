@@ -1278,7 +1278,13 @@ async function chatWithCurrentPage(tabId, sendResponse) {
         }, async (results) => {
             if (results && results[0] && results[0].result) {
                 const content = results[0].result;
-                const pageContext = `Page Title: ${content.title}\n\nPage Content: ${content.content.substring(0, 2000)}${content.content.length > 2000 ? '...' : ''}`;
+                const pageContext = `Page Title: ${content.title}\n\nPage Content: ${content.content}`;
+                
+                console.log('📄 Full page content being sent to sidepanel:', {
+                    title: content.title,
+                    contentLength: content.content?.length || 0,
+                    estimatedTokens: Math.ceil((content.content?.length || 0) / 4)
+                });
                 
                 // Open sidepanel with fresh page context
                 try {

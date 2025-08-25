@@ -143,18 +143,39 @@ class SidepanelAI {
             }
         }
         
-        this.currentContext = {
+        // Create enhanced context object with additional metadata
+        const contextObject = {
             explanation: context,
             originalText: processedOriginalText,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            pageTitle: this.currentPageTitle,
+            pageUrl: this.currentPageUrl,
+            type: 'page_context',
+            version: '2.0' // For future compatibility
         };
         
-        this.showContext();
-        this.scrollToBottom();
-        
-        // Add initial system message
-        if (this.conversation.length === 0) {
-            this.addMessage('assistant', `I've provided an explanation above. Feel free to ask any follow-up questions to deepen your understanding!`);
+        // Validate the context before setting it
+        if (this.validateContext(contextObject)) {
+            this.currentContext = contextObject;
+            this.showContext();
+            this.scrollToBottom();
+            
+            // Add initial system message
+            if (this.conversation.length === 0) {
+                this.addMessage('assistant', `I've provided an explanation above. Feel free to ask any follow-up questions to deepen your understanding!`);
+            }
+            
+            console.log('✅ Context opened successfully:', {
+                explanationLength: context.length,
+                originalTextLength: processedOriginalText?.length || 0,
+                estimatedTokens: this.estimateTokens(processedOriginalText || ''),
+                hasFullContent: processedOriginalText?.includes('FULL PAGE CONTENT') || false,
+                contentSections: (processedOriginalText?.match(/<content-section>/g) || []).length,
+                userComments: (processedOriginalText?.match(/<user-comment/g) || []).length
+            });
+        } else {
+            console.error('❌ Failed to validate context, not setting');
+            this.showToast('Failed to load context. Please try refreshing the page.', 'error');
         }
     }
     
@@ -242,6 +263,13 @@ class SidepanelAI {
     async sendMessage() {
         const messageText = this.elements.messageInput.value.trim();
         if (!messageText || this.isProcessing) return;
+        
+        // Ensure we have page context before sending message
+        const hasContext = await this.ensurePageContext();
+        if (!hasContext) {
+            this.showToast('Unable to load page content. Please try refreshing the page.', 'error');
+            return;
+        }
         
         // Add user message
         this.addMessage('user', messageText);
@@ -370,49 +398,22 @@ class SidepanelAI {
     buildConversationContext(userMessage) {
         const messages = [];
         
-        // System message with context
-        let systemPrompt = `You are a helpful AI assistant integrated into the NoteVault browser extension. You help users understand and explore topics through follow-up conversations.`;
-        
-        if (this.currentContext) {
-            systemPrompt += `\n\nCurrent context: The user previously received this explanation: "${this.currentContext.explanation}"`;
-            if (this.currentContext.originalText) {
-                systemPrompt += `\n\nStructured page content with semantic tags: ${this.currentContext.originalText}
-                
-The content above uses semantic tags for better conversation flow:
-- <page-title>: The main page title
-- <heading level="X">: Section headings (levels 1-6)
-- <content-section>: Large blocks of main content
-- <text>: Regular text passages
-- <list> and <list-item>: Lists and their items
-- <code-comment>: Comments from code or HTML
-- <quote>: Quoted text or blockquotes
-- <code-block>: Code snippets or technical content
-- <table-row>: Tabular data
-- <metadata>: Key-value pairs or structured data
-- <comments-section>: User comments and discussions from the page
-- <user-comment author="username" timestamp="time" votes="count">: Individual user comments with metadata
-- <replies>: Nested replies to comments
-- <reply author="username">: Individual replies within comment threads
-
-When responding, you can reference specific sections by their tags to provide more focused and clear answers. For example, if discussing user opinions, mention "Based on the <user-comment> from [author]..." or "Looking at the discussion in <comments-section>...". You can also compare different viewpoints by referencing multiple user comments.`;
-            }
+        // Validate context before building
+        if (this.currentContext && !this.validateContext(this.currentContext)) {
+            console.warn('Invalid context detected, clearing...');
+            this.clearContext();
         }
         
-        systemPrompt += `\n\nProvide helpful, accurate, and conversational responses. Keep responses concise but informative. Use markdown formatting when helpful.`;
-        
+        // Build dynamic system prompt based on context and conversation state
+        const systemPrompt = this.buildDynamicSystemPrompt();
         messages.push({
             role: 'system',
             content: systemPrompt
         });
         
-        // Add recent conversation history (last 10 messages)
-        const recentConversation = this.conversation.slice(-10);
-        for (const msg of recentConversation) {
-            messages.push({
-                role: msg.type === 'user' ? 'user' : 'assistant',
-                content: msg.content
-            });
-        }
+        // Add conversation history with smart truncation
+        const conversationHistory = this.buildConversationHistory();
+        messages.push(...conversationHistory);
         
         // Add current user message
         messages.push({
@@ -420,7 +421,555 @@ When responding, you can reference specific sections by their tags to provide mo
             content: userMessage
         });
         
-        return messages;
+        // Optimize context for token limits
+        const optimizedMessages = this.optimizeContextForTokens(messages);
+        
+        // Log context for debugging (only in development)
+        if (this.isDevelopmentMode()) {
+            const stats = this.getConversationStats();
+            console.log('🔧 Conversation Context Built:', {
+                totalMessages: optimizedMessages.length,
+                systemPromptLength: systemPrompt.length,
+                conversationHistoryLength: conversationHistory.length,
+                estimatedTokens: optimizedMessages.reduce((sum, msg) => sum + this.estimateTokens(msg.content), 0),
+                hasContext: !!this.currentContext,
+                contextValid: this.validateContext(this.currentContext),
+                stats: stats
+            });
+        }
+        
+        return optimizedMessages;
+    }
+    
+    buildDynamicSystemPrompt() {
+        const basePrompt = this.getBaseSystemPrompt();
+        const contextPrompt = this.getContextPrompt();
+        const behaviorPrompt = this.getBehaviorPrompt();
+        const capabilitiesPrompt = this.getCapabilitiesPrompt();
+        
+        return [basePrompt, contextPrompt, behaviorPrompt, capabilitiesPrompt]
+            .filter(Boolean)
+            .join('\n\n');
+    }
+    
+    getBaseSystemPrompt() {
+        return `You are NoteVault AI, an intelligent assistant integrated into a browser extension that helps users understand and explore web content through contextual conversations.`;
+    }
+    
+    getContextPrompt() {
+        if (!this.currentContext) {
+            return null;
+        }
+        
+        const context = this.currentContext;
+        let prompt = `Current Context: You're helping the user understand content from "${context.pageTitle || 'this page'}"`;
+        
+        if (context.explanation) {
+            prompt += `\n\nPrevious Explanation: ${context.explanation}`;
+        }
+        
+        if (context.originalText) {
+            // Include FULL page content for comprehensive discussions
+            prompt += `\n\nFULL PAGE CONTENT (everything visible on the page):\n${context.originalText}`;
+            
+            // Add semantic tag instructions for better understanding
+            prompt += this.getSemanticTagInstructions();
+        }
+        
+        return prompt;
+    }
+    
+    getStructuredContentSummary(originalText) {
+        // Extract key information from structured content
+        const summary = [];
+        
+        // Get page title
+        const titleMatch = originalText.match(/<page-title>(.*?)<\/page-title>/);
+        if (titleMatch) {
+            summary.push(`Page: "${titleMatch[1]}"`);
+        }
+        
+        // Count content sections
+        const contentSections = (originalText.match(/<content-section>/g) || []).length;
+        const headings = (originalText.match(/<heading/g) || []).length;
+        const comments = (originalText.match(/<user-comment/g) || []).length;
+        
+        if (contentSections > 0) summary.push(`${contentSections} content sections`);
+        if (headings > 0) summary.push(`${headings} headings`);
+        if (comments > 0) summary.push(`${comments} user comments`);
+        
+        return summary.length > 0 ? summary.join(', ') : 'Structured content available';
+    }
+    
+    getSemanticTagInstructions() {
+        return `
+
+Content Structure: The page content uses semantic tags for better understanding:
+- <page-title>: Main page title
+- <heading level="X">: Section headings (levels 1-6)
+- <content-section>: Large content blocks
+- <text>: Regular text passages
+- <list> and <list-item>: Lists and items
+- <code-comment>: Code or HTML comments
+- <quote>: Quoted text or blockquotes
+- <code-block>: Code snippets
+- <table-row>: Tabular data
+- <metadata>: Key-value pairs
+- <comments-section>: User discussions
+- <user-comment author="username" timestamp="time" votes="count">: Individual comments
+- <replies>: Nested comment replies
+- <reply author="username">: Individual replies
+
+When referencing content, use these tags for clarity: "Based on the <user-comment> from [author]..." or "Looking at the <comments-section>...".`;
+    }
+    
+    getBehaviorPrompt() {
+        const behaviors = [
+            'Provide helpful, accurate, and conversational responses',
+            'Keep responses concise but informative',
+            'Use markdown formatting when helpful',
+            'Reference specific content sections when relevant',
+            'Ask clarifying questions when needed',
+            'Maintain context awareness throughout the conversation'
+        ];
+        
+        return `Behavior Guidelines:\n${behaviors.map(b => `- ${b}`).join('\n')}`;
+    }
+    
+    getCapabilitiesPrompt() {
+        const capabilities = [
+            'Answer questions about the current page content',
+            'Provide summaries and explanations',
+            'Analyze user comments and discussions',
+            'Compare different viewpoints',
+            'Suggest related topics for exploration',
+            'Help with content comprehension and learning'
+        ];
+        
+        return `Capabilities:\n${capabilities.map(c => `- ${c}`).join('\n')}`;
+    }
+    
+    buildConversationHistory() {
+        if (!this.conversation || this.conversation.length === 0) {
+            return [];
+        }
+        
+        // Smart conversation history management
+        const maxHistoryMessages = this.getMaxHistoryMessages();
+        const recentMessages = this.conversation.slice(-maxHistoryMessages);
+        
+        // Filter out streaming messages and errors
+        const validMessages = recentMessages.filter(msg => 
+            !msg.isStreaming && !msg.isError && msg.content.trim().length > 0
+        );
+        
+        // Convert to API format
+        return validMessages.map(msg => ({
+            role: msg.type === 'user' ? 'user' : 'assistant',
+            content: msg.content
+        }));
+    }
+    
+    getMaxHistoryMessages() {
+        // Dynamic history length based on context complexity
+        if (this.currentContext?.originalText) {
+            const contentLength = this.currentContext.originalText.length;
+            if (contentLength > 20000) return 4; // Very large content, minimal history
+            if (contentLength > 10000) return 6; // Large content, shorter history
+            if (contentLength > 5000) return 8;  // Medium content
+            return 10; // Small content, longer history
+        }
+        return 10; // Default
+    }
+    
+    isDevelopmentMode() {
+        // Check if we're in development mode
+        return window.location.hostname === 'localhost' || 
+               window.location.hostname === '127.0.0.1' ||
+               window.location.protocol === 'chrome-extension:';
+    }
+    
+    // Token estimation for context optimization
+    estimateTokens(text) {
+        // Rough estimation: 1 token ≈ 4 characters for English text
+        return Math.ceil(text.length / 4);
+    }
+    
+    // Optimize context to fit within token limits
+    optimizeContextForTokens(messages, maxTokens = 8000) { // Increased token limit for full content
+        const totalTokens = messages.reduce((sum, msg) => sum + this.estimateTokens(msg.content), 0);
+        
+        if (totalTokens <= maxTokens) {
+            return messages;
+        }
+        
+        // If we're over the limit, start optimizing
+        const optimizedMessages = [...messages];
+        let currentTokens = totalTokens;
+        
+        // First, try to optimize the system prompt (but preserve full page content)
+        const systemMessage = optimizedMessages[0];
+        if (systemMessage && systemMessage.role === 'system') {
+            const systemTokens = this.estimateTokens(systemMessage.content);
+            if (systemTokens > 2000) { // Increased threshold for full content
+                // Truncate system prompt if it's too long, but preserve page content
+                const maxSystemTokens = 1500;
+                systemMessage.content = this.truncateSystemPromptPreservingContent(systemMessage.content, maxSystemTokens);
+                currentTokens = currentTokens - systemTokens + this.estimateTokens(systemMessage.content);
+            }
+        }
+        
+        // If still over limit, reduce conversation history (preserve page content)
+        if (currentTokens > maxTokens) {
+            const conversationMessages = optimizedMessages.filter(msg => msg.role !== 'system');
+            const userMessage = conversationMessages.pop(); // Keep the current user message
+            
+            // Remove oldest messages until we're under the limit
+            while (conversationMessages.length > 0 && currentTokens > maxTokens) {
+                const removedMessage = conversationMessages.shift();
+                currentTokens -= this.estimateTokens(removedMessage.content);
+            }
+            
+            // Reconstruct messages array
+            optimizedMessages.length = 0;
+            optimizedMessages.push(systemMessage);
+            optimizedMessages.push(...conversationMessages);
+            optimizedMessages.push(userMessage);
+        }
+        
+        return optimizedMessages;
+    }
+    
+    truncateTextToTokens(text, maxTokens) {
+        const estimatedTokens = this.estimateTokens(text);
+        if (estimatedTokens <= maxTokens) {
+            return text;
+        }
+        
+        // Calculate approximate character limit
+        const maxChars = maxTokens * 4;
+        return text.substring(0, maxChars) + '...';
+    }
+    
+    // Intelligently truncate system prompt while preserving full page content
+    truncateSystemPromptPreservingContent(systemPrompt, maxTokens) {
+        const estimatedTokens = this.estimateTokens(systemPrompt);
+        if (estimatedTokens <= maxTokens) {
+            return systemPrompt;
+        }
+        
+        // Split the prompt into sections
+        const sections = systemPrompt.split('\n\n');
+        const preservedSections = [];
+        let currentTokens = 0;
+        
+        for (const section of sections) {
+            const sectionTokens = this.estimateTokens(section);
+            
+            // Always preserve page content section
+            if (section.includes('FULL PAGE CONTENT') || section.includes('Structured page content')) {
+                preservedSections.push(section);
+                currentTokens += sectionTokens;
+                continue;
+            }
+            
+            // Check if adding this section would exceed the limit
+            if (currentTokens + sectionTokens <= maxTokens) {
+                preservedSections.push(section);
+                currentTokens += sectionTokens;
+            } else {
+                // If we can't fit the full section, try to fit part of it
+                const remainingTokens = maxTokens - currentTokens;
+                if (remainingTokens > 100) { // Only if we have meaningful space left
+                    const partialSection = this.truncateTextToTokens(section, remainingTokens);
+                    preservedSections.push(partialSection);
+                }
+                break;
+            }
+        }
+        
+        return preservedSections.join('\n\n');
+    }
+    
+    // Enhanced context validation
+    validateContext(context) {
+        if (!context) return false;
+        
+        const requiredFields = ['explanation', 'originalText', 'timestamp'];
+        const hasRequiredFields = requiredFields.every(field => context[field]);
+        
+        if (!hasRequiredFields) {
+            console.warn('Context validation failed: missing required fields');
+            return false;
+        }
+        
+        // Check if context is not too old (24 hours)
+        const contextAge = Date.now() - new Date(context.timestamp).getTime();
+        const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+        
+        if (contextAge > maxAge) {
+            console.warn('Context validation failed: context too old');
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // Get conversation statistics for debugging
+    getConversationStats() {
+        const stats = {
+            totalMessages: this.conversation.length,
+            userMessages: this.conversation.filter(msg => msg.type === 'user').length,
+            assistantMessages: this.conversation.filter(msg => msg.type === 'assistant').length,
+            hasContext: !!this.currentContext,
+            contextValid: this.validateContext(this.currentContext),
+            estimatedTokens: 0
+        };
+        
+        if (this.currentContext) {
+            stats.contextAge = Date.now() - new Date(this.currentContext.timestamp).getTime();
+            stats.contextTokens = this.estimateTokens(this.currentContext.originalText || '');
+        }
+        
+        return stats;
+    }
+    
+    // Test method for development - can be called from console
+    testContextBuilding() {
+        console.log('🧪 Testing Context Building...');
+        
+        // Test 1: Basic context building
+        const testContext = {
+            explanation: 'This is a test explanation',
+            originalText: '<page-title>Test Page</page-title>\n<content-section>Test content</content-section>',
+            timestamp: new Date().toISOString(),
+            pageTitle: 'Test Page',
+            pageUrl: 'https://example.com',
+            type: 'page_context',
+            version: '2.0'
+        };
+        
+        console.log('Test 1 - Context validation:', this.validateContext(testContext));
+        
+        // Test 2: Token estimation
+        const testText = 'This is a test text for token estimation. It should give us a reasonable estimate of how many tokens this content would use.';
+        console.log('Test 2 - Token estimation:', {
+            text: testText,
+            estimatedTokens: this.estimateTokens(testText),
+            length: testText.length
+        });
+        
+        // Test 3: Context optimization
+        const testMessages = [
+            { role: 'system', content: 'A'.repeat(2000) }, // 500 tokens
+            { role: 'user', content: 'Hello' },
+            { role: 'assistant', content: 'Hi there!' },
+            { role: 'user', content: 'How are you?' }
+        ];
+        
+        const optimized = this.optimizeContextForTokens(testMessages, 1000);
+        console.log('Test 3 - Context optimization:', {
+            originalTokens: testMessages.reduce((sum, msg) => sum + this.estimateTokens(msg.content), 0),
+            optimizedTokens: optimized.reduce((sum, msg) => sum + this.estimateTokens(msg.content), 0),
+            originalMessages: testMessages.length,
+            optimizedMessages: optimized.length
+        });
+        
+        // Test 4: Dynamic prompt building
+        this.currentContext = testContext;
+        const systemPrompt = this.buildDynamicSystemPrompt();
+        console.log('Test 4 - Dynamic system prompt:', {
+            length: systemPrompt.length,
+            estimatedTokens: this.estimateTokens(systemPrompt),
+            includesContext: systemPrompt.includes('Test Page'),
+            includesSemanticTags: systemPrompt.includes('<page-title>')
+        });
+        
+        console.log('✅ Context building tests completed!');
+    }
+    
+    // Test full page content feature
+    async testFullPageContent() {
+        console.log('🧪 Testing Full Page Content Feature...');
+        
+        try {
+            // Test 1: Check current context
+            console.log('Test 1 - Current context status:', {
+                hasContext: !!this.currentContext,
+                contextValid: this.validateContext(this.currentContext),
+                contextAge: this.currentContext ? Date.now() - new Date(this.currentContext.timestamp).getTime() : null
+            });
+            
+            // Test 2: Ensure page context
+            console.log('Test 2 - Ensuring page context...');
+            const hasContext = await this.ensurePageContext();
+            console.log('Page context ensured:', hasContext);
+            
+            // Test 3: Check full content inclusion
+            if (this.currentContext) {
+                const systemPrompt = this.buildDynamicSystemPrompt();
+                const includesFullContent = systemPrompt.includes('FULL PAGE CONTENT');
+                const contentLength = this.currentContext.originalText?.length || 0;
+                const estimatedTokens = this.estimateTokens(this.currentContext.originalText || '');
+                
+                console.log('Test 3 - Full content check:', {
+                    includesFullContent,
+                    contentLength,
+                    estimatedTokens,
+                    hasSemanticTags: this.currentContext.originalText?.includes('<page-title>') || false
+                });
+            }
+            
+            // Test 4: Test content extraction
+            console.log('Test 4 - Testing content extraction...');
+            const pageContent = await this.extractPageContent();
+            console.log('Content extraction result:', {
+                hasTitle: !!pageContent?.title,
+                hasContent: !!pageContent?.content,
+                titleLength: pageContent?.title?.length || 0,
+                contentLength: pageContent?.content?.length || 0
+            });
+            
+            console.log('✅ Full page content tests completed!');
+            
+        } catch (error) {
+            console.error('❌ Full page content test failed:', error);
+        }
+    }
+    
+    // Scan page on demand when context is missing
+    async ensurePageContext() {
+        // Check if we have valid context for the current page
+        if (!this.currentContext || !this.validateContext(this.currentContext)) {
+            console.log('📄 No valid context found, scanning page on demand...');
+            
+            try {
+                this.updateStatus('processing', 'Scanning page content...');
+                
+                // Get current page info
+                const pageInfo = await this.getCurrentPageInfo();
+                if (!pageInfo) {
+                    throw new Error('Could not get current page information');
+                }
+                
+                // Update our tracking
+                this.currentPageUrl = pageInfo.url;
+                this.currentPageTitle = pageInfo.title;
+                
+                // Extract page content
+                const pageContent = await this.extractPageContent();
+                
+                if (pageContent && pageContent.title && pageContent.content) {
+                    // Create context with full page content
+                    const contextText = `I'm ready to discuss this page: "${pageContent.title}". You can ask me about any content, details, or topics mentioned on this page.`;
+                    const taggedContent = this.addSemanticTags(pageContent.content, pageContent.title);
+                    const originalText = `<page-context>\n${taggedContent}\n</page-context>`;
+                    
+                    this.openWithContext(contextText, originalText);
+                    
+                    console.log('✅ Page context loaded on demand:', {
+                        title: pageContent.title,
+                        contentLength: pageContent.content.length,
+                        estimatedTokens: this.estimateTokens(taggedContent)
+                    });
+                    
+                    this.updateStatus('ready', 'Page content loaded');
+                    return true;
+                } else {
+                    throw new Error('Failed to extract meaningful page content');
+                }
+                
+            } catch (error) {
+                console.error('❌ Failed to scan page on demand:', error);
+                this.updateStatus('error', 'Failed to load page content');
+                this.showToast('Failed to load page content. Please try refreshing the page.', 'error');
+                return false;
+            }
+        }
+        
+        return true; // Context already exists
+    }
+    
+    // Extract page content (reusable method)
+    async extractPageContent() {
+        try {
+            // Get current tab
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!tabs || !tabs[0]) {
+                throw new Error('No active tab found');
+            }
+            
+            const tab = tabs[0];
+            
+            // Try background script extraction first
+            try {
+                const pageContent = await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        reject(new Error('Request timeout - background script not responding'));
+                    }, 8000);
+                    
+                    chrome.runtime.sendMessage({
+                        action: 'extractPageContent',
+                        tabId: tab.id
+                    }, (response) => {
+                        clearTimeout(timeout);
+                        
+                        if (chrome.runtime.lastError) {
+                            reject(new Error(chrome.runtime.lastError.message));
+                            return;
+                        }
+                        
+                        if (response && response.success && response.content) {
+                            resolve(response.content);
+                        } else {
+                            reject(new Error(response?.error || 'Failed to extract content'));
+                        }
+                    });
+                });
+                
+                return pageContent;
+                
+            } catch (backgroundError) {
+                console.warn('⚠️ Background extraction failed, trying direct extraction:', backgroundError.message);
+                
+                // Fallback: Direct extraction via scripting API
+                const results = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    function: () => {
+                        const title = document.title || 'Untitled Page';
+                        let content = '';
+                        
+                        // Get main content
+                        const main = document.body;
+                                    // document.querySelector('main') || 
+                                    //  document.querySelector('[role="main"]') || 
+                                    //  document.querySelector('.main-content') ||
+                                    //  document.querySelector('#content') ||
+                                    //  document.querySelector('article') ||
+                                    //  document.body;
+                        
+                        if (main) {
+                            content = main.textContent || main.innerText || main.innerHtml || '';
+                        }
+                        
+                        return {
+                            title: title,
+                            content: content || 'No content available'
+                        };
+                    }
+                });
+                
+                if (results && results[0] && results[0].result) {
+                    return results[0].result;
+                } else {
+                    throw new Error('Direct extraction also failed');
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Page content extraction failed:', error);
+            throw error;
+        }
     }
     
     addMessage(type, content, isError = false) {

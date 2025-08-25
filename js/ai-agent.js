@@ -698,13 +698,13 @@ Provide 3D visualization insights.`
         this.initialized = true;
         
         // Save to chrome storage
-        if (typeof chrome !== 'undefined' && chrome.storage) {
+        // if (typeof chrome !== 'undefined' && chrome.storage) {
             chrome.storage.local.set({
                 qwen_api_key: apiKey,
                 qwen_base_url: baseUrl, 
                 qwen_model: model
             });
-        }
+        // }
     }
 
     // Check if AI is available

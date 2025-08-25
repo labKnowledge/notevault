@@ -133,6 +133,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const saveSettingsBtn = document.getElementById('save-settings');
     const testApiBtn = document.getElementById('test-api');
     const apiKeyInput = document.getElementById('api-key-input');
+    const baseUrlInput = document.getElementById('base-url-input');
     const modelSelect = document.getElementById('model-select');
     const aiStatusText = document.getElementById('ai-status-text');
 
@@ -160,11 +161,12 @@ document.addEventListener('DOMContentLoaded', function() {
             const stored = await chrome.storage.local.get(['ai_config']);
             const config = stored.ai_config || {
                 apiKey: '',
-                baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+                baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
                 model: 'qwen-plus'
             };
             
             apiKeyInput.value = config.apiKey || '';
+            baseUrlInput.value = config.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
             modelSelect.value = config.model || 'qwen-plus';
             
             const isConfigured = config.apiKey && config.baseUrl && config.model;
@@ -180,22 +182,37 @@ document.addEventListener('DOMContentLoaded', function() {
     // Save settings
     saveSettingsBtn.addEventListener('click', async function() {
         const apiKey = apiKeyInput.value.trim();
-        const model = modelSelect.value;
+        const baseUrl = baseUrlInput.value.trim();
+        const model = modelSelect.value.trim();
         
         if (!apiKey) {
             alert('Please enter an API key');
             return;
         }
         
+        if (!baseUrl) {
+            alert('Please enter a base URL');
+            return;
+        }
+        
+        if (!model) {
+            alert('Please enter a model name');
+            return;
+        }
+        
         try {
             const config = {
                 apiKey: apiKey,
-                baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+                baseUrl: baseUrl,
                 model: model
             };
             
             await chrome.storage.local.set({ ai_config: config });
-            
+            chrome.storage.local.set({
+                qwen_api_key: apiKey,
+                qwen_base_url: baseUrl, 
+                qwen_model: model
+            });
             const isConfigured = config.apiKey && config.baseUrl && config.model;
             aiStatusText.textContent = isConfigured ? 
                 `AI Status: Connected (${config.model})` : 
@@ -211,10 +228,21 @@ document.addEventListener('DOMContentLoaded', function() {
     // Test API connection
     testApiBtn.addEventListener('click', async function() {
         const apiKey = apiKeyInput.value.trim();
-        const model = modelSelect.value;
+        const baseUrl = baseUrlInput.value.trim();
+        const model = modelSelect.value.trim();
         
         if (!apiKey) {
             alert('Please enter an API key first');
+            return;
+        }
+        
+        if (!baseUrl) {
+            alert('Please enter a base URL first');
+            return;
+        }
+        
+        if (!model) {
+            alert('Please enter a model name first');
             return;
         }
         
@@ -222,8 +250,11 @@ document.addEventListener('DOMContentLoaded', function() {
         testApiBtn.textContent = 'Testing...';
         
         try {
+            // Ensure the base URL has the proper endpoint
+            const testUrl = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+            
             // Simple test request to verify API key works
-            const response = await fetch('https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions', {
+            const response = await fetch(testUrl, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
@@ -240,7 +271,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert('API connection test successful!');
                 aiStatusText.textContent = `AI Status: Connected (${model})`;
             } else {
-                alert('API connection test failed. Please check your API key.');
+                alert('API connection test failed. Please check your settings.');
                 aiStatusText.textContent = 'AI Status: Connection failed';
             }
         } catch (error) {
