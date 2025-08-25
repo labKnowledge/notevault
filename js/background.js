@@ -120,6 +120,9 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     } else if (request.action === 'chatWithCurrentPage') {
         chatWithCurrentPage(request.tabId, sendResponse);
         return true;
+    } else if (request.action === 'extractPageContent') {
+        extractPageContentForSidepanel(request.tabId, sendResponse);
+        return true;
     }
 });
 
@@ -1141,6 +1144,48 @@ async function openSidepanelWithContext(context, originalText) {
     }
 }
 
+// Open sidepanel without new context (for existing chats)
+async function openSidepanelWithExistingContext() {
+    try {
+        console.log('🔄 Opening sidepanel with existing context...');
+        
+        // Get current tab
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab) {
+            throw new Error('No active tab found');
+        }
+        
+        // Method 1: Try Chrome's native sidepanel (Chrome 114+)
+        if (chrome.sidePanel && chrome.sidePanel.open) {
+            try {
+                await chrome.sidePanel.open({ windowId: tab.windowId });
+                console.log('✅ Sidepanel opened successfully (existing context)');
+                return;
+            } catch (sidepanelError) {
+                console.warn('⚠️ Sidepanel failed:', sidepanelError.message);
+            }
+        }
+        
+        // Method 2: Fallback to popup window
+        console.log('📱 Opening as popup window instead...');
+        const popup = await chrome.windows.create({
+            url: chrome.runtime.getURL('sidepanel.html'),
+            type: 'popup',
+            width: 420,
+            height: 650,
+            focused: true,
+            left: (tab.windowId ? 800 : 800),
+            top: 80
+        });
+        
+        console.log('✅ Chat opened as popup window (existing context):', popup.id);
+        
+    } catch (error) {
+        console.error('❌ Failed to open chat interface with existing context:', error);
+        throw error;
+    }
+}
+
 // Handle AI queries from sidepanel with streaming support
 async function handleAIQuery(messages, temperature = 0.7, maxTokens = 1000, sendResponse) {
     try {
@@ -1197,9 +1242,36 @@ async function handleAIQuery(messages, temperature = 0.7, maxTokens = 1000, send
 // Chat with current page function
 async function chatWithCurrentPage(tabId, sendResponse) {
     try {
-        console.log('Starting chat with current page:', tabId);
+        console.log('🚀 Starting chat with current page:', tabId);
         
-        // Extract page content first
+        // Get current tab info
+        const tab = await chrome.tabs.get(tabId);
+        if (!tab) {
+            throw new Error('Tab not found');
+        }
+        
+        console.log('📄 Tab info:', { url: tab.url, title: tab.title });
+        
+        // Check if there's already a chat for this page
+        const pageKey = tab.url
+            .replace(/^https?:\/\/(www\.)?/, '')
+            .replace(/[^a-zA-Z0-9]/g, '_')
+            .substring(0, 50);
+            
+        const existingData = await chrome.storage.local.get([`sidepanel_page_${pageKey}`]);
+        const pageData = existingData[`sidepanel_page_${pageKey}`];
+        
+        if (pageData && pageData.url === tab.url) {
+            console.log('💬 Found existing chat for this page, opening sidepanel...');
+            // Just open sidepanel - it will load existing conversation
+            await openSidepanelWithExistingContext();
+            sendResponse({ success: true, hasExistingChat: true });
+            return;
+        }
+        
+        console.log('🆕 Creating new chat for this page...');
+        
+        // Extract page content for new chat
         chrome.scripting.executeScript({
             target: { tabId: tabId },
             function: extractCleanPageContent
@@ -1208,13 +1280,13 @@ async function chatWithCurrentPage(tabId, sendResponse) {
                 const content = results[0].result;
                 const pageContext = `Page Title: ${content.title}\n\nPage Content: ${content.content.substring(0, 2000)}${content.content.length > 2000 ? '...' : ''}`;
                 
-                // Open sidepanel with page context
+                // Open sidepanel with fresh page context
                 try {
                     await openSidepanelWithContext(
                         `I'm ready to discuss this page: "${content.title}". Feel free to ask questions about the content, request summaries, explanations, or have a general conversation about the topics covered.`,
                         pageContext
                     );
-                    sendResponse({ success: true });
+                    sendResponse({ success: true, hasExistingChat: false });
                 } catch (error) {
                     console.error('Failed to open sidepanel:', error);
                     sendResponse({ success: false, error: 'Failed to open chat' });
@@ -1226,6 +1298,75 @@ async function chatWithCurrentPage(tabId, sendResponse) {
         
     } catch (error) {
         console.error('Error in chatWithCurrentPage:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+// Extract page content for sidepanel context refresh
+async function extractPageContentForSidepanel(tabId, sendResponse) {
+    try {
+        console.log('🔄 Extracting page content for sidepanel context refresh, tabId:', tabId);
+        
+        // Validate tab exists and is accessible
+        try {
+            const tab = await chrome.tabs.get(tabId);
+            console.log('📄 Tab info:', { url: tab.url, title: tab.title, status: tab.status });
+            
+            if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('moz-extension://') || tab.url.startsWith('chrome-extension://')) {
+                throw new Error('Cannot access system pages or extension pages');
+            }
+        } catch (tabError) {
+            console.error('❌ Tab access error:', tabError);
+            sendResponse({ success: false, error: `Tab access error: ${tabError.message}` });
+            return;
+        }
+        
+        // Execute content extraction script
+        chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            function: extractCleanPageContent
+        }, handleResults);
+        
+        function handleResults(results) {
+            if (chrome.runtime.lastError) {
+                console.error('❌ Script execution error:', chrome.runtime.lastError);
+                sendResponse({ 
+                    success: false, 
+                    error: `Script execution failed: ${chrome.runtime.lastError.message}` 
+                });
+                return;
+            }
+            
+            console.log('📝 Script execution results:', results);
+            
+            if (results && results[0] && results[0].result) {
+                const content = results[0].result;
+                console.log('✅ Page content extracted:', {
+                    title: content.title,
+                    contentLength: content.content?.length || 0,
+                    hasTitle: !!content.title,
+                    hasContent: !!content.content
+                });
+                
+                if (content.title && content.content) {
+                    sendResponse({ success: true, content: content });
+                } else {
+                    sendResponse({ 
+                        success: false, 
+                        error: `Invalid content extracted: title=${!!content.title}, content=${!!content.content}` 
+                    });
+                }
+            } else {
+                console.error('❌ No valid results from script execution');
+                sendResponse({ 
+                    success: false, 
+                    error: 'Script execution returned no valid results' 
+                });
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Error in extractPageContentForSidepanel:', error);
         sendResponse({ success: false, error: error.message });
     }
 }

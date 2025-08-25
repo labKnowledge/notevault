@@ -75,7 +75,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 tabId: tab.id
             }, (response) => {
                 if (response && response.success) {
-                    showToast('Opening chat...', 'success');
+                    const message = response.hasExistingChat 
+                        ? 'Reopening existing chat...' 
+                        : 'Starting new chat...';
+                    showToast(message, 'success');
                     window.close();
                 } else {
                     showToast('Failed to open chat', 'error');

@@ -72,6 +72,15 @@ body {
     transform: translateY(-1px);
 }
 
+.btn-icon.spinning i {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 /* Context Section */
 .context-section {
     background: #f8fafc;
@@ -122,8 +131,36 @@ body {
     border: 1px solid #e2e8f0;
     font-size: 14px;
     line-height: 1.5;
-    max-height: 120px;
+    max-height: 160px;
     overflow-y: auto;
+}
+
+.context-page-info {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.page-title {
+    font-weight: 600;
+    color: #1e293b;
+    font-size: 13px;
+    margin-bottom: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.page-url {
+    font-size: 11px;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.context-explanation {
+    color: #374151;
 }
 
 /* Conversation Area */

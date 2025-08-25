@@ -5,12 +5,17 @@ class SidepanelAI {
         this.currentContext = null;
         this.isProcessing = false;
         this.aiConfig = null;
+        this.currentPageUrl = null;
+        this.currentPageTitle = null;
+        this.pageChangeCheckInterval = null;
         
         this.initializeElements();
         this.initializeEventListeners();
         this.initializeAI();
         this.loadConversationHistory();
         this.checkPendingContext();
+        // Note: Page change monitoring disabled to allow separate chats per page
+        // this.startPageChangeMonitoring();
         
         console.log('SidepanelAI initialized');
     }
@@ -20,6 +25,7 @@ class SidepanelAI {
             conversationArea: document.getElementById('conversation-area'),
             messageInput: document.getElementById('message-input'),
             sendButton: document.getElementById('send-message'),
+            refreshContextButton: document.getElementById('refresh-context'),
             clearButton: document.getElementById('clear-conversation'),
             minimizeButton: document.getElementById('minimize-panel'),
             contextSection: document.getElementById('context-section'),
@@ -47,6 +53,9 @@ class SidepanelAI {
             const hasText = this.elements.messageInput.value.trim().length > 0;
             this.elements.sendButton.disabled = !hasText || this.isProcessing;
         });
+        
+        // Refresh context
+        this.elements.refreshContextButton.addEventListener('click', () => this.refreshPageContext());
         
         // Clear conversation
         this.elements.clearButton.addEventListener('click', () => this.clearConversation());
@@ -111,9 +120,32 @@ class SidepanelAI {
     }
     
     openWithContext(context, originalText = null) {
+        // Apply semantic tagging to originalText if it's not already tagged
+        let processedOriginalText = originalText;
+        if (originalText && !originalText.includes('<page-context>')) {
+            // If it looks like raw content, apply semantic tagging
+            const isRawContent = !originalText.includes('<') || 
+                                originalText.startsWith('Page Title:') ||
+                                originalText.startsWith('Page Content:');
+            
+            if (isRawContent) {
+                // Extract title if present
+                let title = '';
+                let content = originalText;
+                
+                if (originalText.startsWith('Page Title:')) {
+                    const lines = originalText.split('\n');
+                    title = lines[0].replace('Page Title:', '').trim();
+                    content = lines.slice(2).join('\n'); // Skip title and empty line
+                }
+                
+                processedOriginalText = `<page-context>\n${this.addSemanticTags(content, title)}\n</page-context>`;
+            }
+        }
+        
         this.currentContext = {
             explanation: context,
-            originalText: originalText,
+            originalText: processedOriginalText,
             timestamp: new Date().toISOString()
         };
         
@@ -126,10 +158,22 @@ class SidepanelAI {
         }
     }
     
-    showContext() {
+    async showContext() {
         if (!this.currentContext) return;
         
-        this.elements.contextContent.innerHTML = this.formatContextContent(this.currentContext.explanation);
+        // Get current page info for display
+        const pageInfo = await this.getCurrentPageInfo();
+        const pageTitle = pageInfo?.title || this.currentPageTitle || 'Current Page';
+        
+        this.elements.contextContent.innerHTML = `
+            <div class="context-page-info">
+                <div class="page-title">${pageTitle}</div>
+                <div class="page-url">${pageInfo?.url || this.currentPageUrl || ''}</div>
+            </div>
+            <div class="context-explanation">
+                ${this.formatContextContent(this.currentContext.explanation)}
+            </div>
+        `;
         this.elements.contextSection.style.display = 'block';
         
         // Hide welcome message
@@ -332,7 +376,25 @@ class SidepanelAI {
         if (this.currentContext) {
             systemPrompt += `\n\nCurrent context: The user previously received this explanation: "${this.currentContext.explanation}"`;
             if (this.currentContext.originalText) {
-                systemPrompt += `\n\nOriginal text that was explained: "${this.currentContext.originalText}"`;
+                systemPrompt += `\n\nStructured page content with semantic tags: ${this.currentContext.originalText}
+                
+The content above uses semantic tags for better conversation flow:
+- <page-title>: The main page title
+- <heading level="X">: Section headings (levels 1-6)
+- <content-section>: Large blocks of main content
+- <text>: Regular text passages
+- <list> and <list-item>: Lists and their items
+- <code-comment>: Comments from code or HTML
+- <quote>: Quoted text or blockquotes
+- <code-block>: Code snippets or technical content
+- <table-row>: Tabular data
+- <metadata>: Key-value pairs or structured data
+- <comments-section>: User comments and discussions from the page
+- <user-comment author="username" timestamp="time" votes="count">: Individual user comments with metadata
+- <replies>: Nested replies to comments
+- <reply author="username">: Individual replies within comment threads
+
+When responding, you can reference specific sections by their tags to provide more focused and clear answers. For example, if discussing user opinions, mention "Based on the <user-comment> from [author]..." or "Looking at the discussion in <comments-section>...". You can also compare different viewpoints by referencing multiple user comments.`;
             }
         }
         
@@ -510,6 +572,153 @@ class SidepanelAI {
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     
+    addSemanticTags(content, title = '') {
+        // Create a structured representation with semantic tags for better AI conversation
+        let taggedContent = '';
+        
+        // Add page title with tag
+        if (title) {
+            taggedContent += `<page-title>${title}</page-title>\n\n`;
+        }
+        
+        // Split content into sections for analysis
+        const lines = content.split('\n');
+        let currentSection = '';
+        let inCodeBlock = false;
+        let inList = false;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            // Skip empty lines
+            if (!line) {
+                if (currentSection) {
+                    currentSection += '\n';
+                }
+                continue;
+            }
+            
+            // Detect code blocks
+            if (line.match(/^```/)) {
+                if (inCodeBlock) {
+                    currentSection += line + '\n';
+                    taggedContent += `<code-block>\n${currentSection}</code-block>\n\n`;
+                    currentSection = '';
+                    inCodeBlock = false;
+                } else {
+                    if (currentSection) {
+                        taggedContent += this.wrapContentInTag(currentSection) + '\n\n';
+                        currentSection = '';
+                    }
+                    currentSection = line + '\n';
+                    inCodeBlock = true;
+                }
+                continue;
+            }
+            
+            if (inCodeBlock) {
+                currentSection += line + '\n';
+                continue;
+            }
+            
+            // Detect headings
+            if (line.match(/^#{1,6}\s/)) {
+                if (currentSection) {
+                    taggedContent += this.wrapContentInTag(currentSection) + '\n\n';
+                    currentSection = '';
+                }
+                const level = line.match(/^#{1,6}/)[0].length;
+                const headingText = line.replace(/^#{1,6}\s*/, '');
+                taggedContent += `<heading level="${level}">${headingText}</heading>\n\n`;
+                continue;
+            }
+            
+            // Detect list items
+            if (line.match(/^[-*+]\s/) || line.match(/^\d+\.\s/)) {
+                if (!inList) {
+                    if (currentSection) {
+                        taggedContent += this.wrapContentInTag(currentSection) + '\n\n';
+                        currentSection = '';
+                    }
+                    inList = true;
+                    currentSection = '<list>\n';
+                }
+                const itemText = line.replace(/^[-*+]\s|^\d+\.\s/, '');
+                currentSection += `<list-item>${itemText}</list-item>\n`;
+                continue;
+            } else if (inList) {
+                currentSection += '</list>';
+                taggedContent += currentSection + '\n\n';
+                currentSection = '';
+                inList = false;
+            }
+            
+            // Detect comments (HTML comments, code comments) - not user comments
+            if (line.match(/<!--.*-->/) || line.match(/^\/\//) || line.match(/^#/) || line.match(/^\/\*/)) {
+                if (currentSection) {
+                    taggedContent += this.wrapContentInTag(currentSection) + '\n\n';
+                    currentSection = '';
+                }
+                taggedContent += `<code-comment>${line}</code-comment>\n\n`;
+                continue;
+            }
+            
+            // Detect quotes
+            if (line.match(/^>\s/)) {
+                if (currentSection) {
+                    taggedContent += this.wrapContentInTag(currentSection) + '\n\n';
+                    currentSection = '';
+                }
+                const quoteText = line.replace(/^>\s*/, '');
+                taggedContent += `<quote>${quoteText}</quote>\n\n`;
+                continue;
+            }
+            
+            // Detect potential table headers or structured data
+            if (line.includes('|') && line.split('|').length > 2) {
+                if (currentSection) {
+                    taggedContent += this.wrapContentInTag(currentSection) + '\n\n';
+                    currentSection = '';
+                }
+                taggedContent += `<table-row>${line}</table-row>\n\n`;
+                continue;
+            }
+            
+            // Regular content - accumulate
+            if (currentSection) {
+                currentSection += ' ' + line;
+            } else {
+                currentSection = line;
+            }
+        }
+        
+        // Handle any remaining content
+        if (inList && currentSection) {
+            if (!currentSection.endsWith('</list>')) {
+                currentSection += '</list>';
+            }
+            taggedContent += currentSection + '\n\n';
+        } else if (currentSection) {
+            taggedContent += this.wrapContentInTag(currentSection) + '\n\n';
+        }
+        
+        return taggedContent.trim();
+    }
+    
+    wrapContentInTag(content) {
+        const trimmed = content.trim();
+        if (!trimmed) return '';
+        
+        // Try to detect content type for better tagging
+        if (trimmed.length > 200) {
+            return `<content-section>\n${trimmed}\n</content-section>`;
+        } else if (trimmed.match(/^\w+:/) || trimmed.includes('=')) {
+            return `<metadata>${trimmed}</metadata>`;
+        } else {
+            return `<text>${trimmed}</text>`;
+        }
+    }
+    
     
     scrollToBottom() {
         setTimeout(() => {
@@ -517,8 +726,8 @@ class SidepanelAI {
         }, 100);
     }
     
-    clearConversation() {
-        if (confirm('Are you sure you want to clear the conversation?')) {
+    clearConversation(askConfirmation = true) {
+        if (!askConfirmation || confirm('Are you sure you want to clear this conversation? This will only clear the chat for the current page.')) {
             this.conversation = [];
             
             // Clear messages
@@ -532,7 +741,10 @@ class SidepanelAI {
             }
             
             this.saveConversationHistory();
-            this.clearContext();
+            
+            if (askConfirmation) {
+                this.clearContext(); // Only clear context if user manually clears
+            }
         }
     }
     
@@ -578,24 +790,90 @@ class SidepanelAI {
         }, 3000);
     }
     
-    // Storage methods
+    // Storage methods - now page-specific
     async saveConversationHistory() {
         try {
+            if (!this.currentPageUrl) return;
+            
+            const pageKey = this.getPageStorageKey();
             await chrome.storage.local.set({
-                sidepanel_conversation: this.conversation,
-                sidepanel_context: this.currentContext
+                [`sidepanel_page_${pageKey}`]: {
+                    url: this.currentPageUrl,
+                    title: this.currentPageTitle,
+                    conversation: this.conversation,
+                    context: this.currentContext,
+                    lastUpdated: Date.now()
+                }
             });
+            
+            console.log('💾 Saved conversation for page:', this.currentPageTitle);
         } catch (error) {
             console.error('Failed to save conversation:', error);
         }
     }
     
+    getPageStorageKey() {
+        if (!this.currentPageUrl) return 'default';
+        
+        // Create a clean key from URL (remove protocol, www, and special chars)
+        return this.currentPageUrl
+            .replace(/^https?:\/\/(www\.)?/, '')
+            .replace(/[^a-zA-Z0-9]/g, '_')
+            .substring(0, 50); // Limit length
+    }
+    
     async loadConversationHistory() {
         try {
+            // First, try to get current page info
+            const pageInfo = await this.getCurrentPageInfo();
+            if (pageInfo) {
+                this.currentPageUrl = pageInfo.url;
+                this.currentPageTitle = pageInfo.title;
+            }
+            
+            // If we have page info, try to load page-specific conversation
+            if (this.currentPageUrl) {
+                const pageKey = this.getPageStorageKey();
+                const pageResult = await chrome.storage.local.get([`sidepanel_page_${pageKey}`]);
+                const pageData = pageResult[`sidepanel_page_${pageKey}`];
+                
+                if (pageData && pageData.url === this.currentPageUrl) {
+                    console.log('📖 Loading existing conversation for page:', pageData.title);
+                    
+                    this.conversation = pageData.conversation || [];
+                    this.currentContext = pageData.context;
+                    
+                    // Render existing messages (excluding streaming ones)
+                    for (const message of this.conversation) {
+                        if (!message.isStreaming) {
+                            this.renderMessage(message);
+                        }
+                    }
+                    
+                    if (this.conversation.length > 0) {
+                        const welcomeMessage = this.elements.conversationArea.querySelector('.welcome-message');
+                        if (welcomeMessage) {
+                            welcomeMessage.style.display = 'none';
+                        }
+                        this.scrollToBottom();
+                    }
+                    
+                    if (this.currentContext) {
+                        this.showContext();
+                    }
+                    
+                    return; // Successfully loaded page-specific data
+                }
+            }
+            
+            // Fallback: try to load old global conversation (for migration)
             const result = await chrome.storage.local.get(['sidepanel_conversation', 'sidepanel_context']);
             
-            if (result.sidepanel_conversation) {
+            if (result.sidepanel_conversation && result.sidepanel_conversation.length > 0) {
+                console.log('📖 Loading legacy conversation data');
+                
                 this.conversation = result.sidepanel_conversation;
+                this.currentContext = result.sidepanel_context;
                 
                 // Render existing messages (excluding streaming ones)
                 for (const message of this.conversation) {
@@ -611,11 +889,14 @@ class SidepanelAI {
                     }
                     this.scrollToBottom();
                 }
-            }
-            
-            if (result.sidepanel_context) {
-                this.currentContext = result.sidepanel_context;
-                this.showContext();
+                
+                if (this.currentContext) {
+                    this.showContext();
+                }
+                
+                // Migrate to new format and clear old data
+                await this.saveConversationHistory();
+                await chrome.storage.local.remove(['sidepanel_conversation', 'sidepanel_context']);
             }
             
         } catch (error) {
@@ -658,6 +939,492 @@ class SidepanelAI {
             console.error('❌ Failed to check pending context:', error);
         }
     }
+    
+    // Start monitoring for page changes
+    startPageChangeMonitoring() {
+        // Initial page info capture
+        this.getCurrentPageInfo();
+        
+        // Check for page changes every 2 seconds
+        this.pageChangeCheckInterval = setInterval(() => {
+            this.checkForPageChange();
+        }, 2000);
+    }
+    
+    async getCurrentPageInfo() {
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tab) {
+                return {
+                    url: tab.url,
+                    title: tab.title
+                };
+            }
+        } catch (error) {
+            console.error('Failed to get current page info:', error);
+        }
+        return null;
+    }
+    
+    async checkForPageChange() {
+        const pageInfo = await this.getCurrentPageInfo();
+        if (!pageInfo) return;
+        
+        // Check if this is the first time or if page has changed
+        if (this.currentPageUrl && this.currentPageUrl !== pageInfo.url) {
+            console.log('🔄 Page changed from', this.currentPageUrl, 'to', pageInfo.url);
+            await this.handlePageChange(pageInfo);
+        } else if (!this.currentPageUrl) {
+            // First time - just set the current page info
+            this.currentPageUrl = pageInfo.url;
+            this.currentPageTitle = pageInfo.title;
+        }
+    }
+    
+    async handlePageChange(newPageInfo) {
+        console.log('📄 Handling page change to:', newPageInfo.title);
+        
+        // Show notification about page change
+        this.showToast(`Switched to: ${newPageInfo.title}`, 'info');
+        this.updateStatus('processing', 'Loading new page context...');
+        
+        // Update page tracking
+        this.currentPageUrl = newPageInfo.url;
+        this.currentPageTitle = newPageInfo.title;
+        
+        // Clear conversation and context
+        this.clearConversation(false); // false = don't ask for confirmation
+        this.clearContext();
+        
+        // Get new page context and set it up
+        await this.refreshPageContext(true); // true = silent refresh for page change
+        
+        console.log('✅ Page context switched successfully');
+    }
+    
+    async refreshPageContext(silent = false) {
+        try {
+            if (!silent) {
+                console.log('🔄 Refreshing page context...');
+                this.updateStatus('processing', 'Refreshing context...');
+                
+                // Add visual feedback
+                this.elements.refreshContextButton.classList.add('spinning');
+            }
+            
+            // Get current tab
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!tabs || !tabs[0]) {
+                throw new Error('No active tab found');
+            }
+            
+            const tab = tabs[0];
+            console.log('📄 Current tab:', { id: tab.id, url: tab.url, title: tab.title });
+            
+            // Update our tracking
+            this.currentPageUrl = tab.url;
+            this.currentPageTitle = tab.title;
+            
+            // Extract fresh page content via background script (more reliable)
+            console.log('📞 Requesting page content extraction...');
+            let pageContent = null;
+            
+            try {
+                pageContent = await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        reject(new Error('Request timeout - background script not responding'));
+                    }, 8000); // 8 second timeout
+                    
+                    chrome.runtime.sendMessage({
+                        action: 'extractPageContent',
+                        tabId: tab.id
+                    }, (response) => {
+                        clearTimeout(timeout);
+                        
+                        if (chrome.runtime.lastError) {
+                            console.error('Chrome runtime error:', chrome.runtime.lastError);
+                            reject(new Error(chrome.runtime.lastError.message));
+                            return;
+                        }
+                        
+                        console.log('📨 Background response:', response);
+                        
+                        if (response && response.success && response.content) {
+                            resolve(response.content);
+                        } else {
+                            reject(new Error(response?.error || 'Failed to extract content - no valid response'));
+                        }
+                    });
+                });
+            } catch (backgroundError) {
+                console.warn('⚠️ Background extraction failed, trying direct extraction:', backgroundError.message);
+                
+                // Fallback: Try direct extraction via scripting API
+                try {
+                    const results = await chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        function: () => {
+                            // Enhanced content extraction with structure preservation and user comments
+                            const title = document.title || 'Untitled Page';
+                            let content = '';
+                            
+                            // Try to get main content
+                            const main = document.querySelector('main') || 
+                                         document.querySelector('[role="main"]') || 
+                                         document.querySelector('.main-content') ||
+                                         document.querySelector('#content') ||
+                                         document.querySelector('article') ||
+                                         document.body;
+                            
+                            if (main) {
+                                content = extractStructuredContent(main);
+                            }
+                            
+                            // Extract user comments separately
+                            const comments = extractUserComments();
+                            if (comments) {
+                                content += '\n\n' + comments;
+                            }
+                            
+                            return {
+                                title: title,
+                                content: content || 'No content available'
+                            };
+                            
+                            function extractStructuredContent(element) {
+                                let structuredContent = '';
+                                
+                                // Get all child elements and process them in order
+                                const walker = document.createTreeWalker(
+                                    element,
+                                    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+                                    null,
+                                    false
+                                );
+                                
+                                let currentNode;
+                                
+                                while (currentNode = walker.nextNode()) {
+                                    if (currentNode.nodeType === Node.TEXT_NODE) {
+                                        const text = currentNode.textContent.trim();
+                                        if (text && text.length > 2) {
+                                            structuredContent += text + ' ';
+                                        }
+                                    } else if (currentNode.nodeType === Node.ELEMENT_NODE) {
+                                        const tagName = currentNode.tagName.toLowerCase();
+                                        
+                                        // Handle different element types with structure preservation
+                                        switch (tagName) {
+                                            case 'h1':
+                                            case 'h2':
+                                            case 'h3':
+                                            case 'h4':
+                                            case 'h5':
+                                            case 'h6':
+                                                const level = parseInt(tagName.charAt(1));
+                                                const headingText = currentNode.textContent.trim();
+                                                if (headingText) {
+                                                    structuredContent += `\n${'#'.repeat(level)} ${headingText}\n\n`;
+                                                }
+                                                break;
+                                                
+                                            case 'li':
+                                                const listText = currentNode.textContent.trim();
+                                                if (listText) {
+                                                    structuredContent += `- ${listText}\n`;
+                                                }
+                                                break;
+                                                
+                                            case 'p':
+                                                const pText = currentNode.textContent.trim();
+                                                if (pText) {
+                                                    structuredContent += `\n${pText}\n\n`;
+                                                }
+                                                break;
+                                                
+                                            case 'blockquote':
+                                                const quoteText = currentNode.textContent.trim();
+                                                if (quoteText) {
+                                                    structuredContent += `\n> ${quoteText}\n\n`;
+                                                }
+                                                break;
+                                                
+                                            case 'code':
+                                                const codeText = currentNode.textContent.trim();
+                                                if (codeText) {
+                                                    structuredContent += `\`${codeText}\``;
+                                                }
+                                                break;
+                                                
+                                            case 'pre':
+                                                const preText = currentNode.textContent.trim();
+                                                if (preText) {
+                                                    structuredContent += `\n\`\`\`\n${preText}\n\`\`\`\n\n`;
+                                                }
+                                                break;
+                                        }
+                                    }
+                                }
+                                
+                                // Clean up the content
+                                return structuredContent
+                                    .replace(/\n{3,}/g, '\n\n')  // Limit consecutive newlines
+                                    .replace(/\s+/g, ' ')        // Normalize spaces
+                                    .trim();
+                            }
+                            
+                            function extractUserComments() {
+                                let commentsContent = '';
+                                
+                                // Common comment section selectors for various platforms
+                                const commentSelectors = [
+                                    // Generic comment containers
+                                    '[class*="comment" i]:not([class*="button" i]):not([class*="form" i])',
+                                    '[id*="comment" i]',
+                                    '[data-testid*="comment" i]',
+                                    
+                                    // Popular platforms
+                                    // YouTube
+                                    '#comments ytd-comment-thread-renderer',
+                                    'ytd-comment-view-model',
+                                    
+                                    // Reddit
+                                    '[data-testid="comment"]',
+                                    '.Comment',
+                                    '[class*="Comment" i]',
+                                    
+                                    // News sites
+                                    '.comment-content',
+                                    '.comment-body',
+                                    '.user-comment',
+                                    
+                                    // Social media
+                                    '[role="article"]',
+                                    '[data-testid*="tweet" i]',
+                                    '[aria-label*="comment" i]',
+                                    
+                                    // Generic discussion forums
+                                    '.post-content',
+                                    '.message-content',
+                                    '.reply',
+                                    '[class*="discussion" i]',
+                                    
+                                    // Disqus and other comment systems
+                                    '.post-message',
+                                    '.comment-text',
+                                    '.comment-message'
+                                ];
+                                
+                                // Try each selector and collect comments
+                                let foundComments = [];
+                                
+                                for (const selector of commentSelectors) {
+                                    try {
+                                        const elements = document.querySelectorAll(selector);
+                                        
+                                        elements.forEach(element => {
+                                            // Skip if already processed or too small
+                                            if (element.dataset.processed || element.textContent.trim().length < 10) {
+                                                return;
+                                            }
+                                            
+                                            // Mark as processed to avoid duplicates
+                                            element.dataset.processed = 'true';
+                                            
+                                            // Extract comment data
+                                            const commentData = extractSingleComment(element);
+                                            if (commentData && !isDuplicate(foundComments, commentData)) {
+                                                foundComments.push(commentData);
+                                            }
+                                        });
+                                        
+                                        // If we found comments with this selector, we can be more confident
+                                        if (foundComments.length > 0) {
+                                            break;
+                                        }
+                                    } catch (e) {
+                                        // Continue with next selector if this one fails
+                                        continue;
+                                    }
+                                }
+                                
+                                // Format found comments
+                                if (foundComments.length > 0) {
+                                    commentsContent = '<comments-section>\n';
+                                    
+                                    foundComments.forEach((comment) => {
+                                        commentsContent += `<user-comment${comment.author ? ` author="${comment.author}"` : ''}${comment.timestamp ? ` timestamp="${comment.timestamp}"` : ''}${comment.votes ? ` votes="${comment.votes}"` : ''}>\n`;
+                                        commentsContent += `${comment.content}\n`;
+                                        
+                                        // Add replies if any
+                                        if (comment.replies && comment.replies.length > 0) {
+                                            commentsContent += '<replies>\n';
+                                            comment.replies.forEach(reply => {
+                                                commentsContent += `<reply${reply.author ? ` author="${reply.author}"` : ''}>\n${reply.content}\n</reply>\n`;
+                                            });
+                                            commentsContent += '</replies>\n';
+                                        }
+                                        
+                                        commentsContent += '</user-comment>\n\n';
+                                    });
+                                    
+                                    commentsContent += '</comments-section>';
+                                }
+                                
+                                return commentsContent;
+                            }
+                            
+                            function extractSingleComment(element) {
+                                const comment = {
+                                    content: '',
+                                    author: null,
+                                    timestamp: null,
+                                    votes: null,
+                                    replies: []
+                                };
+                                
+                                // Extract main comment content
+                                let contentElement = element.querySelector([
+                                    '[class*="content" i]',
+                                    '[class*="text" i]',
+                                    '[class*="body" i]',
+                                    '[class*="message" i]',
+                                    'p',
+                                    '.comment-text',
+                                    '[data-testid*="text" i]'
+                                ].join(',')) || element;
+                                
+                                comment.content = contentElement.textContent.trim();
+                                
+                                // Extract author information
+                                const authorElement = element.querySelector([
+                                    '[class*="author" i]',
+                                    '[class*="user" i]',
+                                    '[class*="name" i]',
+                                    '.username',
+                                    '[data-testid*="author" i]',
+                                    '[data-testid*="user" i]',
+                                    'a[href*="/user/"]',
+                                    'a[href*="/u/"]',
+                                    'strong',
+                                    'b'
+                                ].join(','));
+                                
+                                if (authorElement) {
+                                    comment.author = authorElement.textContent.trim();
+                                }
+                                
+                                // Extract timestamp
+                                const timeElement = element.querySelector([
+                                    'time',
+                                    '[class*="time" i]',
+                                    '[class*="date" i]',
+                                    '[datetime]',
+                                    '.timestamp'
+                                ].join(','));
+                                
+                                if (timeElement) {
+                                    comment.timestamp = timeElement.textContent.trim() || timeElement.getAttribute('datetime');
+                                }
+                                
+                                // Extract vote count
+                                const voteElement = element.querySelector([
+                                    '[class*="vote" i]',
+                                    '[class*="score" i]',
+                                    '[class*="point" i]',
+                                    '[class*="like" i]',
+                                    '.upvote-count'
+                                ].join(','));
+                                
+                                if (voteElement) {
+                                    const voteText = voteElement.textContent.trim();
+                                    const voteMatch = voteText.match(/\d+/);
+                                    if (voteMatch) {
+                                        comment.votes = voteMatch[0];
+                                    }
+                                }
+                                
+                                // Extract replies (nested comments)
+                                const replyElements = element.querySelectorAll([
+                                    '[class*="reply" i]',
+                                    '[class*="child" i]',
+                                    '.comment-reply'
+                                ].join(','));
+                                
+                                replyElements.forEach(replyEl => {
+                                    if (replyEl.textContent.trim().length > 10) {
+                                        const replyAuthor = replyEl.querySelector([
+                                            '[class*="author" i]',
+                                            '[class*="user" i]',
+                                            'strong',
+                                            'b'
+                                        ].join(','))?.textContent.trim();
+                                        
+                                        comment.replies.push({
+                                            content: replyEl.textContent.trim(),
+                                            author: replyAuthor
+                                        });
+                                    }
+                                });
+                                
+                                return comment.content.length > 10 ? comment : null;
+                            }
+                            
+                            function isDuplicate(existingComments, newComment) {
+                                return existingComments.some(existing => 
+                                    existing.content === newComment.content ||
+                                    (existing.content.length > 50 && newComment.content.includes(existing.content.substring(0, 50)))
+                                );
+                            }
+                        }
+                    });
+                    
+                    if (results && results[0] && results[0].result) {
+                        pageContent = results[0].result;
+                        console.log('✅ Fallback extraction successful');
+                    } else {
+                        throw new Error('Fallback extraction failed');
+                    }
+                } catch (fallbackError) {
+                    console.error('❌ Fallback extraction also failed:', fallbackError);
+                    throw new Error(`Both extraction methods failed: ${backgroundError.message}; ${fallbackError.message}`);
+                }
+            }
+            
+            console.log('📝 Extracted content:', { 
+                title: pageContent.title, 
+                contentLength: pageContent.content?.length || 0 
+            });
+            
+            if (pageContent && pageContent.title && pageContent.content) {
+                // Update context with fresh content using semantic tags
+                const contextText = `I'm ready to discuss this page: "${pageContent.title}". Feel free to ask questions about the content, request summaries, explanations, or have a general conversation about the topics covered.`;
+                const taggedContent = this.addSemanticTags(pageContent.content, pageContent.title);
+                const originalText = `<page-context>\n${taggedContent}\n</page-context>`;
+                
+                this.openWithContext(contextText, originalText);
+                
+                if (!silent) {
+                    this.showToast('Context refreshed with latest page content!', 'success');
+                }
+                
+                console.log('✅ Page context refreshed successfully');
+            } else {
+                throw new Error(`Invalid page content received: ${JSON.stringify(pageContent)}`);
+            }
+            
+        } catch (error) {
+            console.error('❌ Failed to refresh context:', error);
+            if (!silent) {
+                this.showToast(`Failed to refresh context: ${error.message}`, 'error');
+            }
+        } finally {
+            if (!silent) {
+                this.elements.refreshContextButton.classList.remove('spinning');
+                this.updateStatus('ready', 'Ready');
+            }
+        }
+    }
 }
 
 // Initialize when DOM is loaded
@@ -669,10 +1436,24 @@ document.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
         // Page is hidden, could pause some operations
+        if (window.sidepanelAI && window.sidepanelAI.pageChangeCheckInterval) {
+            clearInterval(window.sidepanelAI.pageChangeCheckInterval);
+        }
     } else {
         // Page is visible, resume operations
         if (window.sidepanelAI) {
             window.sidepanelAI.scrollToBottom();
+            // Restart page monitoring
+            if (!window.sidepanelAI.pageChangeCheckInterval) {
+                window.sidepanelAI.startPageChangeMonitoring();
+            }
         }
+    }
+});
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    if (window.sidepanelAI && window.sidepanelAI.pageChangeCheckInterval) {
+        clearInterval(window.sidepanelAI.pageChangeCheckInterval);
     }
 });
