@@ -41,23 +41,29 @@ body {
 
 .quick-actions {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
+    flex-direction: row;
+    gap: 12px;
     margin-bottom: 20px;
+    justify-content: center;
 }
 
-.primary-btn, .secondary-btn, .ai-btn {
-    flex: 1;
-    padding: 10px;
+.icon-button {
+    width: 48px;
+    height: 48px;
+    padding: 0;
     border: none;
-    border-radius: 6px;
+    border-radius: 50%;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 18px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
     transition: all 0.2s ease;
+    position: relative;
+}
+
+.primary-btn, .secondary-btn, .ai-btn {
+    flex: none;
 }
 
 .primary-btn {
@@ -67,6 +73,8 @@ body {
 
 .primary-btn:hover {
     background-color: #3949ab;
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
 
 .secondary-btn {
@@ -76,6 +84,8 @@ body {
 
 .secondary-btn:hover {
     background-color: #00897b;
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
 
 .ai-btn {
@@ -85,7 +95,8 @@ body {
 
 .ai-btn:hover {
     background: linear-gradient(135deg, #5a67d8 0%, #6b3fa0 100%);
-    transform: translateY(-1px);
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
 
 .recent-notes {
@@ -211,6 +222,7 @@ body {
 .icon-btn:hover {
     background-color: #f0f0f0;
     color: #5c6bc0;
+    transform: scale(1.1);
 }
 
 /* Modal Styles */
