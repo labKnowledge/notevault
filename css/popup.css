@@ -41,11 +41,12 @@ body {
 
 .quick-actions {
     display: flex;
+    flex-direction: column;
     gap: 10px;
     margin-bottom: 20px;
 }
 
-.primary-btn, .secondary-btn {
+.primary-btn, .secondary-btn, .ai-btn {
     flex: 1;
     padding: 10px;
     border: none;
@@ -75,6 +76,16 @@ body {
 
 .secondary-btn:hover {
     background-color: #00897b;
+}
+
+.ai-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.ai-btn:hover {
+    background: linear-gradient(135deg, #5a67d8 0%, #6b3fa0 100%);
+    transform: translateY(-1px);
 }
 
 .recent-notes {

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoteVault AI Assistant</title>
+    <link rel="stylesheet" href="css/sidepanel.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="sidepanel-container">
+        <!-- Header -->
+        <div class="sidepanel-header">
+            <div class="header-info">
+                <i class="fas fa-robot"></i>
+                <h1>AI Assistant</h1>
+            </div>
+            <div class="header-actions">
+                <button id="clear-conversation" class="btn-icon" title="Clear conversation">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+                <button id="minimize-panel" class="btn-icon" title="Minimize">
+                    <i class="fas fa-minus"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Context Display -->
+        <div class="context-section" id="context-section" style="display: none;">
+            <div class="context-header">
+                <i class="fas fa-lightbulb"></i>
+                <span>Current Topic</span>
+                <button id="clear-context" class="btn-sm">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="context-content" id="context-content"></div>
+        </div>
+
+        <!-- Conversation Area -->
+        <div class="conversation-area" id="conversation-area">
+            <div class="welcome-message">
+                <div class="welcome-icon">
+                    <i class="fas fa-comments"></i>
+                </div>
+                <h3>Welcome to AI Assistant</h3>
+                <p>Ask follow-up questions about any explanation you receive, or start a new conversation about any topic.</p>
+                <div class="quick-actions">
+                    <button class="quick-action-btn" data-action="explain-more">
+                        <i class="fas fa-plus-circle"></i>
+                        Explain more
+                    </button>
+                    <button class="quick-action-btn" data-action="simplify">
+                        <i class="fas fa-arrow-down"></i>
+                        Simplify
+                    </button>
+                    <button class="quick-action-btn" data-action="examples">
+                        <i class="fas fa-list-alt"></i>
+                        Give examples
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <div class="input-container">
+                <textarea id="message-input" placeholder="Ask a follow-up question or start a new conversation..." rows="2"></textarea>
+                <div class="input-actions">
+                    <button id="send-message" class="send-btn" disabled>
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="input-footer">
+                <div class="status-indicator" id="status-indicator">
+                    <i class="fas fa-circle status-dot"></i>
+                    <span id="status-text">Ready</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/ai-config.js"></script>
+    <script src="js/sidepanel.js"></script>
+</body>
+</html>

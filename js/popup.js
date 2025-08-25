@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // DOM elements
     const openFullAppBtn = document.getElementById('open-full-app');
     const newNoteBtn = document.getElementById('new-note');
+    const chatWithPageBtn = document.getElementById('chat-with-page');
     const notesContainer = document.getElementById('notes-container');
     const settingsBtn = document.getElementById('settings-btn');
 
@@ -57,6 +58,35 @@ document.addEventListener('DOMContentLoaded', function() {
         window.close();
     });
 
+    // Chat with current page
+    chatWithPageBtn.addEventListener('click', async function() {
+        try {
+            // Get current tab
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            
+            if (!tab) {
+                showToast('No active tab found', 'error');
+                return;
+            }
+            
+            // Send message to background to open sidepanel with page context
+            chrome.runtime.sendMessage({
+                action: 'chatWithCurrentPage',
+                tabId: tab.id
+            }, (response) => {
+                if (response && response.success) {
+                    showToast('Opening chat...', 'success');
+                    window.close();
+                } else {
+                    showToast('Failed to open chat', 'error');
+                }
+            });
+        } catch (error) {
+            console.error('Error opening chat:', error);
+            showToast('Error opening chat', 'error');
+        }
+    });
+    
     // Create a new note
     newNoteBtn.addEventListener('click', function() {
         // Create a new note with default content
@@ -218,6 +248,27 @@ document.addEventListener('DOMContentLoaded', function() {
             testApiBtn.textContent = 'Test Connection';
         }
     });
+
+    // Simple toast notification
+    function showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: ${type === 'success' ? '#4caf50' : type === 'error' ? '#f44336' : '#2196f3'};
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 10000;
+            max-width: 200px;
+        `;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => toast.remove(), 2000);
+    }
 
     // Load notes when popup opens
     loadNotes();

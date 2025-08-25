@@ -760,6 +760,29 @@
         });
     }
     
+    // Open sidepanel with context
+    function openSidepanelWithContext(explanationContent, originalText) {
+        console.log('Requesting sidepanel to open with context...');
+        
+        // Send message to background script to open sidepanel
+        chrome.runtime.sendMessage({
+            action: 'openSidepanel',
+            context: explanationContent,
+            originalText: originalText
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error('Failed to open sidepanel:', chrome.runtime.lastError);
+                showToast('Failed to open sidepanel: ' + chrome.runtime.lastError.message, 'error');
+            } else if (response && response.success) {
+                console.log('Sidepanel request successful');
+                showToast('Chat interface opened!');
+            } else {
+                console.error('Sidepanel request failed:', response);
+                showToast('Failed to open chat interface', 'error');
+            }
+        });
+    }
+    
     // Create and show modal
     function createModal(title, content, type = 'info', preservedSelection = null) {
         try {
@@ -866,8 +889,21 @@
                 const actions = document.createElement('div');
                 actions.className = 'notevault-modal-actions';
                 
+                // Add "Continue in Sidepanel" button for explanations
+                if (title === 'Explanation') {
+                    const sidepanelBtn = document.createElement('button');
+                    sidepanelBtn.className = 'notevault-modal-btn notevault-btn-primary';
+                    sidepanelBtn.innerHTML = '<i class="fas fa-comments"></i> Continue in Sidepanel';
+                    sidepanelBtn.style.marginRight = '8px';
+                    sidepanelBtn.addEventListener('click', () => {
+                        openSidepanelWithContext(content, selectedText);
+                        closeModal();
+                    });
+                    actions.appendChild(sidepanelBtn);
+                }
+                
                 const copyBtn = document.createElement('button');
-                copyBtn.className = 'notevault-modal-btn notevault-btn-primary';
+                copyBtn.className = 'notevault-modal-btn notevault-btn-secondary';
                 copyBtn.textContent = 'Copy';
                 copyBtn.addEventListener('click', () => {
                     copyToClipboard(content);

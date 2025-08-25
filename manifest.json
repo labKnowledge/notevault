@@ -9,7 +9,8 @@
     "commands",
     "contextMenus",
     "notifications",
-    "scripting"
+    "scripting",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://dashscope-intl.aliyuncs.com/*"
@@ -51,6 +52,10 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://dashscope-intl.aliyuncs.com"
   },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "minimum_chrome_version": "114",
   "web_accessible_resources": [
     {
       "resources": ["lib/*.js", "js/*.js", "css/*.css", "js/ai-agent.js", "js/ai-service.js", "css/ai-styles.css"],

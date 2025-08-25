@@ -35,6 +35,7 @@ class NoteVaultAI {
         }
     }
 
+
     // Make API call to Qwen
     async makeAPICall(messages, temperature = 0.7, maxTokens = 1000) {
         if (!this.initialized) {
@@ -70,8 +71,9 @@ class NoteVaultAI {
                 console.error('Unexpected API response structure:', data);
                 throw new Error('Invalid API response structure');
             }
-            
-            return data.choices[0].message.content;
+            const content = data.choices[0].message.content;
+
+            return content;
         } catch (error) {
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
                 console.error('Network error - check API URL and connectivity:', error);
